@@ -1,0 +1,1359 @@
+"use client";
+
+import { useEditorStore } from "@/store/editorStore";
+import { AnimationData, ActionData, CONTAINER_TYPES } from "@/types";
+import { useState } from "react";
+import {
+    Eye, EyeOff, Lock, Unlock, Copy, Trash2, ChevronRight,
+    AlignLeft, AlignCenter, AlignRight, AlignJustify,
+} from "lucide-react";
+
+const FONT_FAMILIES = [
+    "Inter", "Roboto", "Playfair Display", "Montserrat", "Open Sans",
+    "Lato", "Poppins", "Georgia", "Times New Roman", "Arial",
+];
+
+const ICON_OPTIONS = [
+    "star", "heart", "home", "search", "mail", "phone",
+    "settings", "check", "close", "arrow", "user", "cart",
+];
+
+// Collapsible section component
+const Section: React.FC<{
+    title: string;
+    defaultOpen?: boolean;
+    children: React.ReactNode;
+}> = ({ title, defaultOpen = true, children }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="insp-section">
+            <button className="insp-section-header" onClick={() => setOpen(!open)}>
+                <span>{title}</span>
+                <ChevronRight size={12} className={`insp-chevron ${open ? "open" : ""}`} />
+            </button>
+            {open && <div className="insp-section-body">{children}</div>}
+        </div>
+    );
+};
+
+// Field row
+const Field: React.FC<{
+    label: string;
+    children: React.ReactNode;
+}> = ({ label, children }) => (
+    <div className="insp-field">
+        <label>{label}</label>
+        <div className="insp-field-input">{children}</div>
+    </div>
+);
+
+const parseNumericInput = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const isGradientColor = (value: string): boolean => /gradient\(/i.test(value || "");
+
+const rgbaToHex = (r: number, g: number, b: number): string => {
+    const toHex = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const toRgba = (hex: string, alpha: number): string => {
+    const raw = hex.replace("#", "");
+    const full = raw.length === 3
+        ? raw.split("").map((c) => c + c).join("")
+        : raw.slice(0, 6).padEnd(6, "0");
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1).toFixed(2)})`;
+};
+
+const parseSolidColor = (value: string, fallback = "#ffffff"): { hex: string; alpha: number } => {
+    const input = String(value || "").trim();
+    if (!input || isGradientColor(input)) {
+        return { hex: fallback, alpha: 1 };
+    }
+
+    if (input.startsWith("#")) {
+        const raw = input.slice(1);
+        if (raw.length === 3 || raw.length === 4) {
+            const expanded = raw.split("").map((c) => c + c).join("");
+            const rgb = expanded.slice(0, 6);
+            const alphaHex = expanded.length === 8 ? expanded.slice(6, 8) : "ff";
+            return { hex: `#${rgb}`, alpha: clamp(parseInt(alphaHex, 16) / 255, 0, 1) };
+        }
+        if (raw.length === 6 || raw.length === 8) {
+            const rgb = raw.slice(0, 6);
+            const alphaHex = raw.length === 8 ? raw.slice(6, 8) : "ff";
+            return { hex: `#${rgb}`, alpha: clamp(parseInt(alphaHex, 16) / 255, 0, 1) };
+        }
+    }
+
+    const rgbaMatch = input.match(
+        /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9]*\.?[0-9]+))?\s*\)/i
+    );
+    if (rgbaMatch) {
+        const r = clamp(Number(rgbaMatch[1]), 0, 255);
+        const g = clamp(Number(rgbaMatch[2]), 0, 255);
+        const b = clamp(Number(rgbaMatch[3]), 0, 255);
+        const a = rgbaMatch[4] !== undefined ? clamp(Number(rgbaMatch[4]), 0, 1) : 1;
+        return { hex: rgbaToHex(r, g, b), alpha: a };
+    }
+
+    return { hex: fallback, alpha: 1 };
+};
+
+const ColorControl: React.FC<{
+    value: string;
+    onChange: (value: string) => void;
+    fallback?: string;
+    allowGradient?: boolean;
+}> = ({ value, onChange, fallback = "#ffffff", allowGradient = false }) => {
+    const isGradient = allowGradient && isGradientColor(value);
+    const solid = parseSolidColor(value, fallback);
+
+    if (isGradient) {
+        return (
+            <div className="color-advanced">
+                <textarea
+                    rows={2}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="color-gradient-input"
+                    placeholder="linear-gradient(90deg, #3b82f6 0%, rgba(59,130,246,0) 100%)"
+                />
+                <button
+                    className="color-mode-btn"
+                    onClick={() => onChange(toRgba(solid.hex, solid.alpha))}
+                    type="button"
+                >
+                    Use Solid
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="color-advanced">
+            <div className="color-row">
+                <input
+                    type="color"
+                    value={solid.hex}
+                    onChange={(e) => onChange(toRgba(e.target.value, solid.alpha))}
+                    className="color-swatch"
+                />
+                <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={fallback}
+                />
+            </div>
+            <div className="color-alpha-row">
+                <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Math.round(solid.alpha * 100)}
+                    onChange={(e) => onChange(toRgba(solid.hex, Number(e.target.value) / 100))}
+                    className="color-alpha-slider"
+                />
+                <span>{Math.round(solid.alpha * 100)}%</span>
+                {allowGradient && (
+                    <button
+                        className="color-mode-btn"
+                        onClick={() => onChange(`linear-gradient(90deg, ${toRgba(solid.hex, solid.alpha)} 0%, rgba(255, 255, 255, 0) 100%)`)}
+                        type="button"
+                    >
+                        Gradient
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const PropertyInspector: React.FC = () => {
+    const {
+        selectedElementId, getElement, updateElement, deleteElement, duplicateElement,
+        updateElementOpacity, updateElementRotation, toggleVisibility, toggleLock,
+        updateElementPosition, updateElementSize, canvasSettings, updateCanvasSettings,
+    } = useEditorStore();
+    const [activeTab, setActiveTab] = useState<"design" | "content" | "animate">("design");
+    const [customCss, setCustomCss] = useState("");
+
+    const el = selectedElementId ? getElement(selectedElementId) : undefined;
+
+    if (!el) {
+        return (
+            <div className="inspector">
+                <div className="insp-header">
+                    <span className="insp-type-badge">Canvas</span>
+                </div>
+                <div className="insp-body">
+                    <Section title="Canvas Settings">
+                        <Field label="Background">
+                            <ColorControl
+                                value={String(canvasSettings.backgroundColor || "#ffffff")}
+                                onChange={(value) => updateCanvasSettings({ backgroundColor: value })}
+                                fallback="#ffffff"
+                                allowGradient
+                            />
+                        </Field>
+                        <div className="insp-row-2">
+                            <Field label="Width">
+                                <input
+                                    type="number"
+                                    value={canvasSettings.width}
+                                    onChange={(e) => {
+                                        const parsed = parseNumericInput(e.target.value);
+                                        if (parsed === null) return;
+                                        updateCanvasSettings({ width: Math.max(320, parsed) });
+                                    }}
+                                />
+                            </Field>
+                            <Field label="Height">
+                                <input
+                                    type="number"
+                                    value={canvasSettings.height}
+                                    onChange={(e) => {
+                                        const parsed = parseNumericInput(e.target.value);
+                                        if (parsed === null) return;
+                                        updateCanvasSettings({ height: Math.max(200, parsed) });
+                                    }}
+                                />
+                            </Field>
+                        </div>
+                    </Section>
+                    <div className="inspector-hint">
+                        <span>Select an element on the canvas to edit its properties</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    const setProp = (key: string, val: string | number | boolean) =>
+        updateElement(el.id, { props: { ...el.props, [key]: val } });
+    const setStyle = (key: string, val: string | number) =>
+        updateElement(el.id, { styles: { ...el.styles, [key]: val } });
+    const setBackgroundStyle = (value: string) => {
+        const nextStyles: Record<string, string | number> = { ...el.styles };
+        if (isGradientColor(value)) {
+            nextStyles.background = value;
+            nextStyles.backgroundColor = "transparent";
+        } else {
+            nextStyles.background = value;
+            nextStyles.backgroundColor = value;
+        }
+        updateElement(el.id, { styles: nextStyles });
+    };
+    const setAnim = (anim: AnimationData) =>
+        updateElement(el.id, { animation: anim });
+    const setAction = (act: ActionData) =>
+        updateElement(el.id, { actions: act });
+
+    const isTextElement = el.type === "text" || el.type === "title" || el.type === "paragraph";
+    const isContainerType = CONTAINER_TYPES.includes(el.type);
+
+    return (
+        <div className="inspector">
+            {/* Header */}
+            <div className="insp-header">
+                <span className="insp-type-badge">{el.type}</span>
+                <div className="insp-header-actions">
+                    <button
+                        className={`insp-icon-btn ${!el.visible ? "active-toggle" : ""}`}
+                        onClick={() => toggleVisibility(el.id)}
+                        title={el.visible ? "Hide" : "Show"}
+                    >
+                        {el.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                    <button
+                        className={`insp-icon-btn ${el.locked ? "active-toggle" : ""}`}
+                        onClick={() => toggleLock(el.id)}
+                        title={el.locked ? "Unlock" : "Lock"}
+                    >
+                        {el.locked ? <Lock size={14} /> : <Unlock size={14} />}
+                    </button>
+                    <button className="insp-icon-btn" onClick={() => duplicateElement(el.id)} title="Duplicate"><Copy size={14} /></button>
+                    <button className="insp-icon-btn danger" onClick={() => deleteElement(el.id)} title="Delete"><Trash2 size={14} /></button>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="insp-tabs">
+                {(["design", "content", "animate"] as const).map((tab) => (
+                    <button
+                        key={tab}
+                        className={`insp-tab ${activeTab === tab ? "active" : ""}`}
+                        onClick={() => setActiveTab(tab)}
+                    >
+                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                ))}
+            </div>
+
+            <div className="insp-body">
+                {/* ─── DESIGN TAB ─── */}
+                {activeTab === "design" && (
+                    <>
+                        {/* Position & Size */}
+                        <Section title="Position & Size">
+                            <div className="insp-row-2">
+                                <Field label="X">
+                                    <input
+                                        type="number"
+                                        value={Math.round(el.x)}
+                                        onChange={(e) => {
+                                            const parsed = parseNumericInput(e.target.value);
+                                            if (parsed === null) return;
+                                            updateElementPosition(el.id, parsed, el.y);
+                                        }}
+                                    />
+                                </Field>
+                                <Field label="Y">
+                                    <input
+                                        type="number"
+                                        value={Math.round(el.y)}
+                                        onChange={(e) => {
+                                            const parsed = parseNumericInput(e.target.value);
+                                            if (parsed === null) return;
+                                            updateElementPosition(el.id, el.x, parsed);
+                                        }}
+                                    />
+                                </Field>
+                            </div>
+                            <div className="insp-row-2">
+                                <Field label="W">
+                                    <input
+                                        type="number"
+                                        value={Math.round(el.w)}
+                                        onChange={(e) => {
+                                            const parsed = parseNumericInput(e.target.value);
+                                            if (parsed === null) return;
+                                            updateElementSize(el.id, Math.max(40, parsed), el.h);
+                                        }}
+                                    />
+                                </Field>
+                                <Field label="H">
+                                    <input
+                                        type="number"
+                                        value={Math.round(el.h)}
+                                        onChange={(e) => {
+                                            const parsed = parseNumericInput(e.target.value);
+                                            if (parsed === null) return;
+                                            updateElementSize(el.id, el.w, Math.max(20, parsed));
+                                        }}
+                                    />
+                                </Field>
+                            </div>
+                            <div className="insp-row-2">
+                                <Field label="Rotation">
+                                    <input
+                                        type="number"
+                                        value={el.rotation || 0}
+                                        onChange={(e) => {
+                                            const parsed = parseNumericInput(e.target.value);
+                                            if (parsed === null) return;
+                                            updateElementRotation(el.id, parsed);
+                                        }}
+                                        min={0} max={360}
+                                    />
+                                </Field>
+                                <Field label="Opacity">
+                                    <div className="opacity-control">
+                                        <input
+                                            type="range"
+                                            min={0} max={100} step={1}
+                                            value={Math.round((el.opacity ?? 1) * 100)}
+                                            onChange={(e) => updateElementOpacity(el.id, Number(e.target.value) / 100)}
+                                            className="opacity-slider"
+                                        />
+                                        <span className="opacity-value">{Math.round((el.opacity ?? 1) * 100)}%</span>
+                                    </div>
+                                </Field>
+                            </div>
+                        </Section>
+
+                        {/* Fill color & opacity */}
+                        <Section title="Fill Color">
+                            <Field label="Background">
+                                <ColorControl
+                                    value={String(el.styles.background || el.styles.backgroundColor || "")}
+                                    onChange={(value) => setBackgroundStyle(value)}
+                                    fallback="#ffffff"
+                                    allowGradient
+                                />
+                            </Field>
+                            <Field label="Text color">
+                                <ColorControl
+                                    value={String(el.styles.color || "")}
+                                    onChange={(value) => setStyle("color", value)}
+                                    fallback="#000000"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Text controls — only for text-like elements */}
+                        {(isTextElement || el.type === "button") && (
+                            <Section title="Typography">
+                                <Field label="Font family">
+                                    <select
+                                        value={String(el.styles.fontFamily || "Inter")}
+                                        onChange={(e) => setStyle("fontFamily", e.target.value)}
+                                    >
+                                        {FONT_FAMILIES.map((f) => (
+                                            <option key={f} value={f}>{f}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <div className="insp-row-2">
+                                    <Field label="Font size">
+                                        <input
+                                            type="text"
+                                            value={String(el.styles.fontSize || "")}
+                                            onChange={(e) => setStyle("fontSize", e.target.value)}
+                                            placeholder="16px"
+                                        />
+                                    </Field>
+                                    <Field label="Weight">
+                                        <select
+                                            value={String(el.styles.fontWeight || "400")}
+                                            onChange={(e) => setStyle("fontWeight", e.target.value)}
+                                        >
+                                            <option value="300">Light</option>
+                                            <option value="400">Regular</option>
+                                            <option value="500">Medium</option>
+                                            <option value="600">Semi Bold</option>
+                                            <option value="700">Bold</option>
+                                            <option value="800">Extra Bold</option>
+                                        </select>
+                                    </Field>
+                                </div>
+                                <Field label="Alignment">
+                                    <div className="align-buttons">
+                                        {(["left", "center", "right", "justify"] as const).map((a) => (
+                                            <button
+                                                key={a}
+                                                className={`align-btn ${el.styles.textAlign === a ? "active" : ""}`}
+                                                onClick={() => setStyle("textAlign", a)}
+                                                title={a}
+                                            >
+                                                {a === "left" && <AlignLeft size={14} />}
+                                                {a === "center" && <AlignCenter size={14} />}
+                                                {a === "right" && <AlignRight size={14} />}
+                                                {a === "justify" && <AlignJustify size={14} />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </Field>
+                                <div className="insp-row-2">
+                                    <Field label="Letter spacing">
+                                        <input
+                                            type="text"
+                                            value={String(el.styles.letterSpacing || "")}
+                                            onChange={(e) => setStyle("letterSpacing", e.target.value)}
+                                            placeholder="normal"
+                                        />
+                                    </Field>
+                                    <Field label="Line height">
+                                        <input
+                                            type="text"
+                                            value={String(el.styles.lineHeight || "")}
+                                            onChange={(e) => setStyle("lineHeight", e.target.value)}
+                                            placeholder="1.5"
+                                        />
+                                    </Field>
+                                </div>
+                                <Field label="Text transform">
+                                    <select
+                                        value={String(el.styles.textTransform || "none")}
+                                        onChange={(e) => setStyle("textTransform", e.target.value)}
+                                    >
+                                        <option value="none">None</option>
+                                        <option value="uppercase">UPPERCASE</option>
+                                        <option value="lowercase">lowercase</option>
+                                        <option value="capitalize">Capitalize</option>
+                                    </select>
+                                </Field>
+                                <Field label="Text decoration">
+                                    <select
+                                        value={String(el.styles.textDecoration || "none")}
+                                        onChange={(e) => setStyle("textDecoration", e.target.value)}
+                                    >
+                                        <option value="none">None</option>
+                                        <option value="underline">Underline</option>
+                                        <option value="line-through">Strikethrough</option>
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Layout — for containers */}
+                        {isContainerType && (
+                            <Section title="Layout" defaultOpen={false}>
+                                <Field label="Direction">
+                                    <select
+                                        value={String(el.styles.flexDirection || "column")}
+                                        onChange={(e) => setStyle("flexDirection", e.target.value)}
+                                    >
+                                        <option value="row">Row</option>
+                                        <option value="column">Column</option>
+                                        <option value="row-reverse">Row Reverse</option>
+                                        <option value="column-reverse">Column Reverse</option>
+                                    </select>
+                                </Field>
+                                <Field label="Justify">
+                                    <select
+                                        value={String(el.styles.justifyContent || "flex-start")}
+                                        onChange={(e) => setStyle("justifyContent", e.target.value)}
+                                    >
+                                        <option value="flex-start">Start</option>
+                                        <option value="center">Center</option>
+                                        <option value="flex-end">End</option>
+                                        <option value="space-between">Space Between</option>
+                                        <option value="space-around">Space Around</option>
+                                        <option value="space-evenly">Space Evenly</option>
+                                    </select>
+                                </Field>
+                                <Field label="Align">
+                                    <select
+                                        value={String(el.styles.alignItems || "stretch")}
+                                        onChange={(e) => setStyle("alignItems", e.target.value)}
+                                    >
+                                        <option value="stretch">Stretch</option>
+                                        <option value="flex-start">Start</option>
+                                        <option value="center">Center</option>
+                                        <option value="flex-end">End</option>
+                                    </select>
+                                </Field>
+                                <Field label="Wrap">
+                                    <select
+                                        value={String(el.styles.flexWrap || "nowrap")}
+                                        onChange={(e) => setStyle("flexWrap", e.target.value)}
+                                    >
+                                        <option value="nowrap">No Wrap</option>
+                                        <option value="wrap">Wrap</option>
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Display & Overflow */}
+                        <Section title="Display & Overflow" defaultOpen={false}>
+                            <Field label="Display">
+                                <select
+                                    value={String(el.styles.display || "block")}
+                                    onChange={(e) => setStyle("display", e.target.value)}
+                                >
+                                    {["block", "flex", "grid", "inline", "inline-block", "inline-flex", "none"].map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Position">
+                                <select
+                                    value={String(el.styles.position || "absolute")}
+                                    onChange={(e) => setStyle("position", e.target.value)}
+                                >
+                                    {["static", "relative", "absolute", "fixed", "sticky"].map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Overflow">
+                                <select
+                                    value={String(el.styles.overflow || "visible")}
+                                    onChange={(e) => setStyle("overflow", e.target.value)}
+                                >
+                                    {["visible", "hidden", "scroll", "auto"].map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Visibility">
+                                <select
+                                    value={String(el.styles.visibility || "visible")}
+                                    onChange={(e) => setStyle("visibility", e.target.value)}
+                                >
+                                    <option value="visible">Visible</option>
+                                    <option value="hidden">Hidden</option>
+                                </select>
+                            </Field>
+                            <Field label="Z-Index">
+                                <input
+                                    type="number"
+                                    value={String(el.styles.zIndex || "")}
+                                    onChange={(e) => setStyle("zIndex", e.target.value)}
+                                    placeholder="auto"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Sizing */}
+                        <Section title="Sizing" defaultOpen={false}>
+                            <div className="insp-row-2">
+                                <Field label="Min W">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.minWidth || "")}
+                                        onChange={(e) => setStyle("minWidth", e.target.value)}
+                                        placeholder="auto"
+                                    />
+                                </Field>
+                                <Field label="Max W">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.maxWidth || "")}
+                                        onChange={(e) => setStyle("maxWidth", e.target.value)}
+                                        placeholder="none"
+                                    />
+                                </Field>
+                            </div>
+                            <div className="insp-row-2">
+                                <Field label="Min H">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.minHeight || "")}
+                                        onChange={(e) => setStyle("minHeight", e.target.value)}
+                                        placeholder="auto"
+                                    />
+                                </Field>
+                                <Field label="Max H">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.maxHeight || "")}
+                                        onChange={(e) => setStyle("maxHeight", e.target.value)}
+                                        placeholder="none"
+                                    />
+                                </Field>
+                            </div>
+                            <Field label="Box Sizing">
+                                <select
+                                    value={String(el.styles.boxSizing || "border-box")}
+                                    onChange={(e) => setStyle("boxSizing", e.target.value)}
+                                >
+                                    <option value="border-box">border-box</option>
+                                    <option value="content-box">content-box</option>
+                                </select>
+                            </Field>
+                        </Section>
+
+                        {/* Border — expanded */}
+                        <Section title="Border" defaultOpen={false}>
+                            <div className="insp-row-2">
+                                <Field label="Style">
+                                    <select
+                                        value={String(el.styles.borderStyle || "none")}
+                                        onChange={(e) => setStyle("borderStyle", e.target.value)}
+                                    >
+                                        {["none", "solid", "dashed", "dotted", "double", "groove", "ridge"].map((v) => (
+                                            <option key={v} value={v}>{v}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Width">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.borderWidth || "")}
+                                        onChange={(e) => setStyle("borderWidth", e.target.value)}
+                                        placeholder="0px"
+                                    />
+                                </Field>
+                            </div>
+                            <Field label="Color">
+                                <ColorControl
+                                    value={String(el.styles.borderColor || "")}
+                                    onChange={(value) => setStyle("borderColor", value)}
+                                    fallback="#000000"
+                                />
+                            </Field>
+                            <Field label="Radius">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.borderRadius || "")}
+                                    onChange={(e) => setStyle("borderRadius", e.target.value)}
+                                    placeholder="0px"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Shadow */}
+                        <Section title="Shadow" defaultOpen={false}>
+                            <Field label="Box shadow">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.boxShadow || "")}
+                                    onChange={(e) => setStyle("boxShadow", e.target.value)}
+                                    placeholder="none"
+                                />
+                            </Field>
+                            <Field label="Text shadow">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.textShadow || "")}
+                                    onChange={(e) => setStyle("textShadow", e.target.value)}
+                                    placeholder="none"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Spacing */}
+                        <Section title="Spacing">
+                            <div className="insp-row-2">
+                                <Field label="Padding">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.padding || "")}
+                                        onChange={(e) => setStyle("padding", e.target.value)}
+                                        placeholder="0px"
+                                    />
+                                </Field>
+                                <Field label="Margin">
+                                    <input
+                                        type="text"
+                                        value={String(el.styles.margin || "")}
+                                        onChange={(e) => setStyle("margin", e.target.value)}
+                                        placeholder="0px"
+                                    />
+                                </Field>
+                            </div>
+                            <Field label="Gap">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.gap || "")}
+                                    onChange={(e) => setStyle("gap", e.target.value)}
+                                    placeholder="0px"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Effects */}
+                        <Section title="Effects" defaultOpen={false}>
+                            <Field label="Cursor">
+                                <select
+                                    value={String(el.styles.cursor || "default")}
+                                    onChange={(e) => setStyle("cursor", e.target.value)}
+                                >
+                                    {["default", "pointer", "grab", "move", "text", "wait", "crosshair", "not-allowed", "zoom-in", "zoom-out"].map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Pointer Events">
+                                <select
+                                    value={String(el.styles.pointerEvents || "auto")}
+                                    onChange={(e) => setStyle("pointerEvents", e.target.value)}
+                                >
+                                    <option value="auto">auto</option>
+                                    <option value="none">none</option>
+                                </select>
+                            </Field>
+                            <Field label="Mix Blend">
+                                <select
+                                    value={String(el.styles.mixBlendMode || "normal")}
+                                    onChange={(e) => setStyle("mixBlendMode", e.target.value)}
+                                >
+                                    {["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "difference", "exclusion"].map((v) => (
+                                        <option key={v} value={v}>{v}</option>
+                                    ))}
+                                </select>
+                            </Field>
+                            <Field label="Filter">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.filter || "")}
+                                    onChange={(e) => setStyle("filter", e.target.value)}
+                                    placeholder="none"
+                                />
+                            </Field>
+                            <Field label="Backdrop Filter">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.backdropFilter || "")}
+                                    onChange={(e) => setStyle("backdropFilter", e.target.value)}
+                                    placeholder="none"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Transitions */}
+                        <Section title="Transitions" defaultOpen={false}>
+                            <Field label="Transition">
+                                <input
+                                    type="text"
+                                    value={String(el.styles.transition || "")}
+                                    onChange={(e) => setStyle("transition", e.target.value)}
+                                    placeholder="all 0.3s ease"
+                                />
+                            </Field>
+                        </Section>
+
+                        {/* Custom CSS */}
+                        <Section title="Custom CSS" defaultOpen={false}>
+                            <Field label="CSS">
+                                <textarea
+                                    rows={5}
+                                    value={customCss}
+                                    onChange={(e) => setCustomCss(e.target.value)}
+                                    placeholder={`color: red;\nfont-size: 20px;`}
+                                    className="custom-css-textarea"
+                                />
+                            </Field>
+                            <button
+                                className="apply-css-btn"
+                                onClick={() => {
+                                    const parsed: Record<string, string> = {};
+                                    customCss.split(";").forEach((rule) => {
+                                        const [prop, val] = rule.split(":").map((s) => s.trim());
+                                        if (prop && val) {
+                                            const camel = prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+                                            parsed[camel] = val;
+                                        }
+                                    });
+                                    if (Object.keys(parsed).length > 0) {
+                                        updateElement(el.id, { styles: { ...el.styles, ...parsed } });
+                                    }
+                                }}
+                            >
+                                Apply CSS
+                            </button>
+                        </Section>
+                    </>
+                )}
+
+                {/* ─── CONTENT TAB ─── */}
+                {activeTab === "content" && (
+                    <>
+                        {/* Text elements */}
+                        {isTextElement && (
+                            <Section title="Text Content">
+                                <Field label="Content">
+                                    <textarea
+                                        rows={4}
+                                        value={String(el.props.content || "")}
+                                        onChange={(e) => setProp("content", e.target.value)}
+                                    />
+                                </Field>
+                                {el.type === "title" && (
+                                    <Field label="Heading level">
+                                        <select
+                                            value={String(el.props.level || "2")}
+                                            onChange={(e) => setProp("level", Number(e.target.value))}
+                                        >
+                                            {[1, 2, 3, 4, 5, 6].map((n) => (
+                                                <option key={n} value={n}>H{n}</option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                )}
+                            </Section>
+                        )}
+
+                        {/* Button */}
+                        {el.type === "button" && (
+                            <Section title="Button">
+                                <Field label="Label">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.label || "")}
+                                        onChange={(e) => setProp("label", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Hover bg color">
+                                    <ColorControl
+                                        value={String(el.props.hoverBg || "")}
+                                        onChange={(value) => setProp("hoverBg", value)}
+                                        fallback="#2563eb"
+                                        allowGradient
+                                    />
+                                </Field>
+                                <Field label="Click action">
+                                    <select
+                                        value={el.actions?.type || "none"}
+                                        onChange={(e) =>
+                                            setAction({
+                                                type: e.target.value as ActionData["type"],
+                                                target: el.actions?.target || "",
+                                            })
+                                        }
+                                    >
+                                        {["none", "redirect", "scroll", "api_call"].map((t) => (
+                                            <option key={t} value={t}>{t}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                {el.actions?.type === "redirect" && (
+                                    <Field label="Redirect link">
+                                        <input
+                                            type="text"
+                                            value={el.actions?.target || ""}
+                                            onChange={(e) =>
+                                                setAction({ type: "redirect", target: e.target.value })
+                                            }
+                                            placeholder="https://..."
+                                        />
+                                    </Field>
+                                )}
+                            </Section>
+                        )}
+
+                        {/* Image */}
+                        {el.type === "image" && (
+                            <Section title="Image">
+                                <Field label="Image URL">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.src || "")}
+                                        onChange={(e) => setProp("src", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Alt text">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.alt || "")}
+                                        onChange={(e) => setProp("alt", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Object fit">
+                                    <select
+                                        value={String(el.props.objectFit || "cover")}
+                                        onChange={(e) => setProp("objectFit", e.target.value)}
+                                    >
+                                        <option value="cover">Cover</option>
+                                        <option value="contain">Contain</option>
+                                        <option value="fill">Fill</option>
+                                        <option value="none">None</option>
+                                    </select>
+                                </Field>
+                                <Field label="Link URL">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.link || "")}
+                                        onChange={(e) => setProp("link", e.target.value)}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Input */}
+                        {el.type === "input" && (
+                            <Section title="Input">
+                                <Field label="Placeholder">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.placeholder || "")}
+                                        onChange={(e) => setProp("placeholder", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Type">
+                                    <select
+                                        value={String(el.props.inputType || "text")}
+                                        onChange={(e) => setProp("inputType", e.target.value)}
+                                    >
+                                        {["text", "email", "password", "number", "tel", "url", "textarea"].map((t) => (
+                                            <option key={t} value={t}>{t}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Required">
+                                    <label className="toggle-switch">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(el.props.required)}
+                                            onChange={(e) => setProp("required", e.target.checked)}
+                                        />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </Field>
+                                <Field label="Max length">
+                                    <input
+                                        type="number"
+                                        value={String(el.props.maxLength || "")}
+                                        onChange={(e) => setProp("maxLength", Number(e.target.value))}
+                                        placeholder="None"
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Video */}
+                        {el.type === "video" && (
+                            <Section title="Video">
+                                <Field label="Video URL">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.src || "")}
+                                        onChange={(e) => setProp("src", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Autoplay">
+                                    <label className="toggle-switch">
+                                        <input type="checkbox" checked={Boolean(el.props.autoplay)} onChange={(e) => setProp("autoplay", e.target.checked)} />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </Field>
+                                <Field label="Loop">
+                                    <label className="toggle-switch">
+                                        <input type="checkbox" checked={Boolean(el.props.loop)} onChange={(e) => setProp("loop", e.target.checked)} />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </Field>
+                                <Field label="Muted">
+                                    <label className="toggle-switch">
+                                        <input type="checkbox" checked={Boolean(el.props.muted)} onChange={(e) => setProp("muted", e.target.checked)} />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </Field>
+                                <Field label="Poster URL">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.poster || "")}
+                                        onChange={(e) => setProp("poster", e.target.value)}
+                                        placeholder="https://..."
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Menu */}
+                        {el.type === "menu" && (
+                            <Section title="Menu">
+                                <Field label="Items (comma-sep)">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.items || "")}
+                                        onChange={(e) => setProp("items", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Style">
+                                    <select
+                                        value={String(el.props.menuStyle || "horizontal")}
+                                        onChange={(e) => setProp("menuStyle", e.target.value)}
+                                    >
+                                        <option value="horizontal">Horizontal</option>
+                                        <option value="vertical">Vertical</option>
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Shape */}
+                        {el.type === "shape" && (
+                            <Section title="Shape">
+                                <Field label="Shape type">
+                                    <select
+                                        value={String(el.props.shapeType || "rectangle")}
+                                        onChange={(e) => setProp("shapeType", e.target.value)}
+                                    >
+                                        {["rectangle", "circle", "triangle", "star", "hexagon", "heart"].map((s) => (
+                                            <option key={s} value={s}>{s}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Gallery */}
+                        {el.type === "gallery" && (
+                            <Section title="Gallery">
+                                <Field label="Columns">
+                                    <input
+                                        type="number"
+                                        min={1} max={8}
+                                        value={Number(el.props.columns) || 3}
+                                        onChange={(e) => setProp("columns", Number(e.target.value))}
+                                    />
+                                </Field>
+                                <Field label="Gap (px)">
+                                    <input
+                                        type="number"
+                                        min={0} max={32}
+                                        value={Number(el.props.gap) || 8}
+                                        onChange={(e) => setProp("gap", Number(e.target.value))}
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Columns */}
+                        {el.type === "columns" && (
+                            <Section title="Columns">
+                                <Field label="Column count">
+                                    <input
+                                        type="number"
+                                        min={1} max={6}
+                                        value={Number(el.props.columnCount) || 2}
+                                        onChange={(e) => setProp("columnCount", Number(e.target.value))}
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Repeater */}
+                        {el.type === "repeater" && (
+                            <Section title="Repeater">
+                                <Field label="Repeat count">
+                                    <input
+                                        type="number"
+                                        min={1} max={20}
+                                        value={Number(el.props.repeatCount) || 3}
+                                        onChange={(e) => setProp("repeatCount", Number(e.target.value))}
+                                    />
+                                </Field>
+                                <Field label="Direction">
+                                    <select
+                                        value={String(el.props.direction || "column")}
+                                        onChange={(e) => setProp("direction", e.target.value)}
+                                    >
+                                        <option value="column">Vertical</option>
+                                        <option value="row">Horizontal</option>
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Frame */}
+                        {el.type === "frame" && (
+                            <Section title="Frame">
+                                <Field label="URL">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.src || "")}
+                                        onChange={(e) => setProp("src", e.target.value)}
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Icon */}
+                        {el.type === "icon" && (
+                            <Section title="Icon">
+                                <Field label="Icon">
+                                    <select
+                                        value={String(el.props.icon || "star")}
+                                        onChange={(e) => setProp("icon", e.target.value)}
+                                    >
+                                        {ICON_OPTIONS.map((ic) => (
+                                            <option key={ic} value={ic}>{ic}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Size">
+                                    <input
+                                        type="number"
+                                        min={12} max={128}
+                                        value={Number(el.props.iconSize) || 32}
+                                        onChange={(e) => setProp("iconSize", Number(e.target.value))}
+                                    />
+                                </Field>
+                                <Field label="Color">
+                                    <ColorControl
+                                        value={String(el.props.iconColor || "")}
+                                        onChange={(value) => setProp("iconColor", value)}
+                                        fallback="#374151"
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Spacer */}
+                        {el.type === "spacer" && (
+                            <Section title="Spacer">
+                                <Field label="Height (px)">
+                                    <input
+                                        type="number"
+                                        min={4} max={500}
+                                        value={Number(el.props.spacerHeight) || 40}
+                                        onChange={(e) => setProp("spacerHeight", Number(e.target.value))}
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Social Bar */}
+                        {el.type === "socialbar" && (
+                            <Section title="Social Bar">
+                                {["facebook", "twitter", "instagram", "linkedin", "youtube"].map((p) => (
+                                    <Field key={p} label={p.charAt(0).toUpperCase() + p.slice(1)}>
+                                        <label className="toggle-switch">
+                                            <input
+                                                type="checkbox"
+                                                checked={Boolean(el.props[p])}
+                                                onChange={(e) => setProp(p, e.target.checked)}
+                                            />
+                                            <span className="toggle-slider" />
+                                        </label>
+                                    </Field>
+                                ))}
+                                <Field label="Icon size">
+                                    <input
+                                        type="number"
+                                        min={16} max={64}
+                                        value={Number(el.props.iconSize) || 24}
+                                        onChange={(e) => setProp("iconSize", Number(e.target.value))}
+                                    />
+                                </Field>
+                                <Field label="Style">
+                                    <select
+                                        value={String(el.props.iconStyle || "filled")}
+                                        onChange={(e) => setProp("iconStyle", e.target.value)}
+                                    >
+                                        <option value="filled">Filled</option>
+                                        <option value="outline">Outline</option>
+                                    </select>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Accordion */}
+                        {el.type === "accordion" && (
+                            <Section title="Accordion">
+                                <Field label="Header text">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.headerText || "")}
+                                        onChange={(e) => setProp("headerText", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Expanded">
+                                    <label className="toggle-switch">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(el.props.expanded)}
+                                            onChange={(e) => setProp("expanded", e.target.checked)}
+                                        />
+                                        <span className="toggle-slider" />
+                                    </label>
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Tabs */}
+                        {el.type === "tabs" && (
+                            <Section title="Tabs">
+                                <Field label="Tab titles (comma-sep)">
+                                    <input
+                                        type="text"
+                                        value={String(el.props.tabTitles || "")}
+                                        onChange={(e) => setProp("tabTitles", e.target.value)}
+                                    />
+                                </Field>
+                                <Field label="Active tab index">
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        value={Number(el.props.activeTab) || 0}
+                                        onChange={(e) => setProp("activeTab", Number(e.target.value))}
+                                    />
+                                </Field>
+                            </Section>
+                        )}
+
+                        {/* Actions for forms */}
+                        {el.type === "form" && (
+                            <Section title="Actions">
+                                <Field label="Action type">
+                                    <select
+                                        value={el.actions?.type || "none"}
+                                        onChange={(e) =>
+                                            setAction({
+                                                type: e.target.value as ActionData["type"],
+                                                target: el.actions?.target,
+                                            })
+                                        }
+                                    >
+                                        {["none", "submit", "redirect", "api_call", "scroll"].map((t) => (
+                                            <option key={t} value={t}>{t}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                {el.actions?.type && el.actions.type !== "none" && el.actions.type !== "submit" && (
+                                    <Field label="Target URL">
+                                        <input
+                                            type="text"
+                                            value={el.actions?.target || ""}
+                                            onChange={(e) =>
+                                                setAction({ type: el.actions?.type || "redirect", target: e.target.value })
+                                            }
+                                            placeholder="https://..."
+                                        />
+                                    </Field>
+                                )}
+                            </Section>
+                        )}
+                    </>
+                )}
+
+                {/* ─── ANIMATE TAB ─── */}
+                {activeTab === "animate" && (
+                    <Section title="Animation">
+                        <Field label="Type">
+                            <select
+                                value={el.animation?.type || "none"}
+                                onChange={(e) =>
+                                    setAnim({
+                                        type: e.target.value as AnimationData["type"],
+                                        duration: el.animation?.duration || 0.3,
+                                        delay: el.animation?.delay || 0,
+                                    })
+                                }
+                            >
+                                {["none", "fade", "slide", "scale", "bounce"].map((t) => (
+                                    <option key={t} value={t}>{t}</option>
+                                ))}
+                            </select>
+                        </Field>
+                        {el.animation?.type && el.animation.type !== "none" && (
+                            <>
+                                <Field label="Duration (s)">
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        max="5"
+                                        value={el.animation?.duration || 0.3}
+                                        onChange={(e) =>
+                                            setAnim({
+                                                type: el.animation?.type || "fade",
+                                                duration: parseFloat(e.target.value) || 0.3,
+                                                delay: el.animation?.delay || 0,
+                                            })
+                                        }
+                                    />
+                                </Field>
+                                <Field label="Delay (s)">
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        max="5"
+                                        value={el.animation?.delay || 0}
+                                        onChange={(e) =>
+                                            setAnim({
+                                                type: el.animation?.type || "fade",
+                                                duration: el.animation?.duration || 0.3,
+                                                delay: parseFloat(e.target.value) || 0,
+                                            })
+                                        }
+                                    />
+                                </Field>
+                            </>
+                        )}
+                    </Section>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default PropertyInspector;

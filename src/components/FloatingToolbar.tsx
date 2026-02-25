@@ -1,0 +1,154 @@
+"use client";
+
+import { useEditorStore } from "@/store/editorStore";
+import { useEffect, useState, useRef, useCallback } from "react";
+
+const FloatingToolbar: React.FC = () => {
+    const {
+        selectedElementId,
+        getElement,
+        duplicateElement,
+        deleteElement,
+        updateElement,
+        toggleVisibility,
+        toggleLock,
+    } =
+        useEditorStore();
+    const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+    const toolbarRef = useRef<HTMLDivElement>(null);
+
+    const updatePosition = useCallback(() => {
+        if (!selectedElementId) {
+            setPosition(null);
+            return;
+        }
+        const elNode = document.querySelector(`[data-element-id="${selectedElementId}"]`);
+        const workspace = document.querySelector(".canvas-workspace");
+        if (!elNode || !workspace) {
+            setPosition(null);
+            return;
+        }
+
+        const elRect = elNode.getBoundingClientRect();
+        const wsRect = workspace.getBoundingClientRect();
+        const toolbarHeight = 40;
+        const gap = 8;
+
+        let top = elRect.top - wsRect.top - toolbarHeight - gap;
+        if (top < 4) {
+            // Show below the element instead
+            top = elRect.bottom - wsRect.top + gap;
+        }
+
+        const left = elRect.left - wsRect.left + elRect.width / 2;
+
+        setPosition({ top, left });
+    }, [selectedElementId]);
+
+    useEffect(() => {
+        const rafId = requestAnimationFrame(updatePosition);
+
+        // Update position on scroll/resize
+        const workspace = document.querySelector(".canvas-workspace");
+        if (workspace) {
+            workspace.addEventListener("scroll", updatePosition);
+        }
+        window.addEventListener("resize", updatePosition);
+
+        // Also update on any mouse movement (for drag repositioning)
+        const handleMove = () => {
+            requestAnimationFrame(updatePosition);
+        };
+        document.addEventListener("mousemove", handleMove);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            if (workspace) {
+                workspace.removeEventListener("scroll", updatePosition);
+            }
+            window.removeEventListener("resize", updatePosition);
+            document.removeEventListener("mousemove", handleMove);
+        };
+    }, [updatePosition]);
+
+    if (!selectedElementId || !position) return null;
+    const el = getElement(selectedElementId);
+    if (!el) return null;
+
+    const hasText =
+        el.type === "text" ||
+        el.type === "title" ||
+        el.type === "paragraph" ||
+        el.type === "button";
+
+    return (
+        <div
+            ref={toolbarRef}
+            className="floating-toolbar"
+            style={{
+                top: `${position.top}px`,
+                left: `${position.left}px`,
+                transform: "translateX(-50%)",
+            }}
+        >
+            {hasText && (
+                <button
+                    className="ft-btn ft-primary"
+                    onClick={() => {
+                        const key = el.type === "button" ? "label" : "content";
+                        const current = String(el.props[key] || "");
+                        const newText = prompt("Edit text:", current);
+                        if (newText !== null) {
+                            updateElement(el.id, { props: { ...el.props, [key]: newText } });
+                        }
+                    }}
+                >
+                    Change Text
+                </button>
+            )}
+            <button
+                className="ft-btn"
+                onClick={() => duplicateElement(selectedElementId)}
+                title="Duplicate"
+            >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+            </button>
+            <button className={`ft-btn ${!el.visible ? "ft-primary" : ""}`} onClick={() => toggleVisibility(el.id)} title={el.visible ? "Hide" : "Show"}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    {el.visible ? (
+                        <>
+                            <path d="M1 8s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Z" stroke="currentColor" strokeWidth="1.3" />
+                            <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
+                        </>
+                    ) : (
+                        <>
+                            <path d="M1 8s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Z" stroke="currentColor" strokeWidth="1.3" />
+                            <path d="M3 13L13 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </>
+                    )}
+                </svg>
+            </button>
+            <button className={`ft-btn ${el.locked ? "ft-primary" : ""}`} onClick={() => toggleLock(el.id)} title={el.locked ? "Unlock" : "Lock"}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+                    <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+            </button>
+            <div className="ft-sep" />
+            <button
+                className="ft-btn ft-danger"
+                onClick={() => deleteElement(selectedElementId)}
+                title="Delete"
+            >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4h10M6 4V3a1 1 0 011-1h2a1 1 0 011 1v1M5 7v5M8 7v5M11 7v5M4.5 4l.5 9a1 1 0 001 1h4a1 1 0 001-1l.5-9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+            </button>
+        </div>
+    );
+};
+
+export default FloatingToolbar;
