@@ -2,6 +2,7 @@
 
 import { useEditorStore } from "@/store/editorStore";
 import { useBackendStore } from "@/store/backendStore";
+import { useRoutingStore } from "@/store/routingStore";
 import { templates, sidebarCategories } from "@/templates";
 import { ElementType, CONTAINER_TYPES } from "@/types";
 import { BACKEND_SIDEBAR_CATEGORIES, BackendBlockType } from "@/types/backend";
@@ -21,7 +22,7 @@ import {
     LayoutGrid, Menu, Diamond, Star, FileInput, PenLine,
     Smartphone, RotateCcw, ChevronDown, Code, Sparkles,
     Server, Database, Shield, GitBranch, Repeat, AlertTriangle,
-    CheckCircle, Link2, Settings, Zap, Download, Play,
+    CheckCircle, Link2, Settings, Zap, Download, Play, Maximize2,
 } from "lucide-react";
 
 // Map element type string → Lucide icon for sidebar tiles
@@ -370,10 +371,78 @@ const Sidebar: React.FC = () => {
                         <button className="flyout-close" onClick={() => setSidebarOpen(null)}>✕</button>
                     </div>
                     <div className="flyout-body">
-                        <div className="placeholder-panel">
-                            <Route size={32} />
-                            <p>Route Editor</p>
-                            <span>Connect pages and define navigation flow. Coming soon.</span>
+                        <div className="routes-flyout-section">
+                            <div className="routes-section-header">
+                                <span>Pages</span>
+                                <button
+                                    className="routes-add-all-btn"
+                                    onClick={() => {
+                                        const routingStore = useRoutingStore.getState();
+                                        pages.forEach((page) => {
+                                            routingStore.addNode("page", page.id);
+                                        });
+                                    }}
+                                >
+                                    Add All
+                                </button>
+                            </div>
+                            <div className="routes-page-list">
+                                {pages.map((page) => {
+                                    const onCanvas = useRoutingStore.getState().nodes.some(
+                                        (n) => n.type === "page" && n.refId === page.id
+                                    );
+                                    return (
+                                        <div
+                                            key={page.id}
+                                            className={`routes-page-item ${onCanvas ? "routes-page-placed" : ""}`}
+                                            draggable={!onCanvas}
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData(
+                                                    "text/plain",
+                                                    JSON.stringify({ routingType: "page", refId: page.id })
+                                                );
+                                                e.dataTransfer.effectAllowed = "copy";
+                                            }}
+                                        >
+                                            <div className="routes-page-thumb">
+                                                <FileText size={20} />
+                                            </div>
+                                            <div className="routes-page-info">
+                                                <span className="routes-page-title">{page.title}</span>
+                                                <span className="routes-page-route">{page.route}</span>
+                                            </div>
+                                            {onCanvas && (
+                                                <span className="routes-on-canvas-badge">✓</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="routes-flyout-section">
+                            <div className="routes-section-header">
+                                <span>Quick Actions</span>
+                            </div>
+                            <button
+                                className="routes-action-btn"
+                                onClick={() => {
+                                    const routingStore = useRoutingStore.getState();
+                                    routingStore.autoLayoutNodes();
+                                }}
+                            >
+                                <LayoutGrid size={14} />
+                                Auto Layout
+                            </button>
+                            <button
+                                className="routes-action-btn"
+                                onClick={() => {
+                                    const routingStore = useRoutingStore.getState();
+                                    routingStore.resetView();
+                                }}
+                            >
+                                <Maximize2 size={14} />
+                                Reset View
+                            </button>
                         </div>
                     </div>
                 </div>

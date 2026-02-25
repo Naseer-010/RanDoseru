@@ -56,6 +56,12 @@ const parseNumericInput = (value: string): number | null => {
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
+const getElementDisplayName = (label: string | undefined, type: string): string => {
+    const trimmed = String(label || "").trim();
+    if (trimmed) return trimmed;
+    return type.charAt(0).toUpperCase() + type.slice(1);
+};
+
 const isGradientColor = (value: string): boolean => /gradient\(/i.test(value || "");
 
 const rgbaToHex = (r: number, g: number, b: number): string => {
@@ -188,8 +194,12 @@ const PropertyInspector: React.FC = () => {
     } = useEditorStore();
     const [activeTab, setActiveTab] = useState<"design" | "content" | "animate">("design");
     const [customCss, setCustomCss] = useState("");
+    const [renamingElementId, setRenamingElementId] = useState<string | null>(null);
+    const [elementNameDraft, setElementNameDraft] = useState("");
 
     const el = selectedElementId ? getElement(selectedElementId) : undefined;
+    const displayName = el ? getElementDisplayName(el.label, el.type) : "";
+    const isRenamingElement = Boolean(el && renamingElementId === el.id);
 
     if (!el) {
         return (
@@ -259,6 +269,22 @@ const PropertyInspector: React.FC = () => {
         updateElement(el.id, { animation: anim });
     const setAction = (act: ActionData) =>
         updateElement(el.id, { actions: act });
+    const startRenameElement = () => {
+        setElementNameDraft(displayName);
+        setRenamingElementId(el.id);
+    };
+    const cancelRenameElement = () => {
+        setElementNameDraft(displayName);
+        setRenamingElementId(null);
+    };
+    const commitRenameElement = () => {
+        const nextName = elementNameDraft.trim();
+        const currentName = String(el.label || "").trim();
+        if (nextName && nextName !== currentName) {
+            updateElement(el.id, { label: nextName });
+        }
+        setRenamingElementId(null);
+    };
 
     const isTextElement = el.type === "text" || el.type === "title" || el.type === "paragraph";
     const isContainerType = CONTAINER_TYPES.includes(el.type);
@@ -267,7 +293,30 @@ const PropertyInspector: React.FC = () => {
         <div className="inspector">
             {/* Header */}
             <div className="insp-header">
-                <span className="insp-type-badge">{el.type}</span>
+                <div className="insp-header-main">
+                    {isRenamingElement ? (
+                        <input
+                            className="insp-name-input"
+                            type="text"
+                            value={elementNameDraft}
+                            onChange={(e) => setElementNameDraft(e.target.value)}
+                            onBlur={commitRenameElement}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") commitRenameElement();
+                                if (e.key === "Escape") cancelRenameElement();
+                            }}
+                            autoFocus
+                        />
+                    ) : (
+                        <span
+                            className="insp-type-badge insp-type-badge-editable"
+                            title="Double-click to rename"
+                            onDoubleClick={startRenameElement}
+                        >
+                            {displayName}
+                        </span>
+                    )}
+                </div>
                 <div className="insp-header-actions">
                     <button
                         className={`insp-icon-btn ${!el.visible ? "active-toggle" : ""}`}

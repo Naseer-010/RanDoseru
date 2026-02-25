@@ -81,18 +81,18 @@ const renderElement = (
     if (el.type === "stack") {
         baseStyles.display = "flex";
         baseStyles.flexDirection = "column";
-        baseStyles.gap = SAFE_UNIT(el.styles?.gap ?? "16px", "1rem");
+        baseStyles.gap = SAFE_UNIT(el.styles?.gap ?? "16px", "1rem") || "1rem";
     }
     if (el.type === "columns") {
         const count = Number(el.props?.columnCount) || 2;
         baseStyles.display = "grid";
         baseStyles.gridTemplateColumns = `repeat(${count}, minmax(0, 1fr))`;
-        baseStyles.gap = SAFE_UNIT(el.styles?.gap ?? "16px", "1rem");
+        baseStyles.gap = SAFE_UNIT(el.styles?.gap ?? "16px", "1rem") || "1rem";
     }
     if (el.type === "container" || el.type === "section") {
         baseStyles.display = baseStyles.display || "flex";
         baseStyles.flexDirection = baseStyles.flexDirection || "column";
-        baseStyles.gap = baseStyles.gap || SAFE_UNIT(el.styles?.gap ?? "12px", "0.75rem");
+        baseStyles.gap = baseStyles.gap || SAFE_UNIT(el.styles?.gap ?? "12px", "0.75rem") || "0.75rem";
     }
 
     const mergedStyles = { ...baseStyles, ...(el.styles || {}) };

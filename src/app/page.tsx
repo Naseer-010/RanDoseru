@@ -13,6 +13,8 @@ import PreviewPanel from "@/components/PreviewPanel";
 import BackendCanvas from "@/components/backend/BackendCanvas";
 import BackendInspector from "@/components/backend/BackendInspector";
 import BackendHierarchy from "@/components/backend/BackendHierarchy";
+import RoutingCanvas from "@/components/routing/RoutingCanvas";
+import RoutingRightPanel from "@/components/routing/RoutingRightPanel";
 import FrontendCodePreviewPanel from "@/components/FrontendCodePreviewPanel";
 import { useEditorStore } from "@/store/editorStore";
 import { useBackendStore } from "@/store/backendStore";
@@ -102,6 +104,7 @@ export default function Home() {
   const { codePreviewOpen } = useBackendStore();
 
   const isBackendMode = sidebarOpen === "backend";
+  const isRoutingMode = sidebarOpen === "routes";
 
   const openPreview = () => {
     selectElement(null);
@@ -119,6 +122,9 @@ export default function Home() {
             <span className="header-title">Studio Editor</span>
             {isBackendMode && (
               <span className="header-mode-badge">Backend</span>
+            )}
+            {isRoutingMode && (
+              <span className="header-mode-badge routing-badge">Routes</span>
             )}
           </div>
           <div className="header-center">
@@ -147,6 +153,10 @@ export default function Home() {
               <>
                 <BackendCanvas />
               </>
+            ) : isRoutingMode ? (
+              <>
+                <RoutingCanvas />
+              </>
             ) : (
               <>
                 <Canvas />
@@ -159,6 +169,8 @@ export default function Home() {
               <BackendHierarchy />
               <BackendInspector />
             </div>
+          ) : isRoutingMode ? (
+            <RoutingRightPanel />
           ) : (
             <PropertyInspector />
           )}
