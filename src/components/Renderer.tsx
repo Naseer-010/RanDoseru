@@ -1,0 +1,547 @@
+"use client";
+
+import { ElementNode, CONTAINER_TYPES } from "@/types";
+import { useEditorStore } from "@/store/editorStore";
+import { useDroppable } from "@dnd-kit/core";
+
+interface RendererProps {
+    elements: ElementNode[];
+    parentId?: string | null;
+    isRoot?: boolean; // true for top-level canvas elements (absolute positioning)
+    readOnly?: boolean;
+}
+
+// Resize handles component
+const ResizeHandles: React.FC = () => {
+    const handles = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+    return (
+        <>
+            {handles.map((h) => (
+                <div
+                    key={h}
+                    className={`resize-handle resize-handle-${h}`}
+                    data-resize-handle={h}
+                />
+            ))}
+        </>
+    );
+};
+
+// Icon SVGs for the icon element
+const ICON_SVGS: Record<string, React.ReactNode> = {
+    star: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>,
+    heart: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>,
+    home: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg>,
+    search: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>,
+    mail: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" /></svg>,
+    phone: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" /></svg>,
+    settings: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z" /></svg>,
+    check: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>,
+    close: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>,
+    arrow: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>,
+    user: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" /></svg>,
+    cart: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0020.01 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z" /></svg>,
+};
+
+// Social icons
+const SocialIcon: React.FC<{ platform: string; size: number; style: string }> = ({ platform, size, style: iconStyle }) => {
+    const colors: Record<string, string> = {
+        facebook: "#1877F2", twitter: "#1DA1F2", instagram: "#E4405F",
+        linkedin: "#0A66C2", youtube: "#FF0000",
+    };
+    const color = iconStyle === "filled" ? colors[platform] || "#666" : "#666";
+    return (
+        <div
+            className="social-icon-item"
+            style={{
+                width: size + 12, height: size + 12,
+                backgroundColor: iconStyle === "filled" ? color : "transparent",
+                border: iconStyle === "outline" ? `2px solid ${color}` : "none",
+                borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: iconStyle === "filled" ? "#fff" : color,
+                fontSize: size * 0.6,
+                fontWeight: 700,
+            }}
+        >
+            {platform[0].toUpperCase()}
+        </div>
+    );
+};
+
+// Shape SVGs
+const ShapeSVG: React.FC<{ shapeType: string; color: string }> = ({ shapeType, color }) => {
+    switch (shapeType) {
+        case "circle":
+            return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><circle cx="50" cy="50" r="48" fill={color} /></svg>;
+        case "triangle":
+            return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><polygon points="50,2 98,98 2,98" fill={color} /></svg>;
+        case "star":
+            return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><polygon points="50,2 63,38 98,38 70,60 80,98 50,75 20,98 30,60 2,38 37,38" fill={color} /></svg>;
+        case "hexagon":
+            return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><polygon points="50,2 93,25 93,75 50,98 7,75 7,25" fill={color} /></svg>;
+        case "heart":
+            return <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%" }}><path d="M50 88 C25 65 5 50 5 30 C5 15 15 5 30 5 C40 5 47 12 50 18 C53 12 60 5 70 5 C85 5 95 15 95 30 C95 50 75 65 50 88Z" fill={color} /></svg>;
+        case "rectangle":
+        default:
+            return <div style={{ width: "100%", height: "100%", backgroundColor: color, borderRadius: "inherit" }} />;
+    }
+};
+
+interface ElementRendererProps {
+    element: ElementNode;
+    isRoot?: boolean;
+    readOnly?: boolean;
+}
+
+const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, readOnly = false }) => {
+    const { selectedElementId, selectElement } = useEditorStore();
+    const isSelected = !readOnly && selectedElementId === element.id;
+    const isContainer = CONTAINER_TYPES.includes(element.type);
+    const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({
+        id: `drop-${element.id}`,
+        data: { type: "container", parentId: element.id },
+        disabled: !isContainer || readOnly,
+    });
+
+    // Not visible — render nothing (in editor, show faded)
+    if (!element.visible) {
+        return null;
+    }
+
+    // Position styles: absolute for root-level, relative for children inside containers
+    const isTextLike = element.type === "text" || element.type === "title" || element.type === "paragraph";
+    const widthPx = `${Math.max(40, element.w)}px`;
+    const heightPx = `${Math.max(20, element.h)}px`;
+    const rawPosition = String(element.styles.position || "");
+    const resolvedPosition = (rawPosition || (isContainer ? "relative" : "static")) as React.CSSProperties["position"];
+    const isPositionedChild = resolvedPosition !== "static";
+    const positionStyles: React.CSSProperties = isRoot
+        ? {
+            position: "absolute",
+            left: `${element.x}px`,
+            top: `${element.y}px`,
+            width: widthPx,
+            minHeight: heightPx,
+            height: isTextLike ? "auto" : heightPx,
+        }
+        : {
+            position: resolvedPosition,
+            left: isPositionedChild ? `${element.x}px` : undefined,
+            top: isPositionedChild ? `${element.y}px` : undefined,
+            width: String(element.styles.width || widthPx),
+            minHeight: heightPx,
+            height: isTextLike ? "auto" : String(element.styles.height || heightPx),
+        };
+
+    const mergedStyles: React.CSSProperties = {
+        ...element.styles as React.CSSProperties,
+        ...positionStyles,
+        ...(element.type === "input"
+            ? {
+                border: "none",
+                background: "transparent",
+                backgroundColor: "transparent",
+                boxShadow: "none",
+                padding: "0",
+            }
+            : {}),
+        cursor: readOnly
+            ? (element.styles.cursor as React.CSSProperties["cursor"]) || "default"
+            : (element.locked ? "not-allowed" : (isSelected ? "grab" : "default")),
+        userSelect: "none",
+        overflow: isContainer ? "visible" : (isTextLike ? "visible" : "hidden"),
+        opacity: element.opacity ?? 1,
+        transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+    };
+
+    const selectionClass = isSelected ? "element-selected" : "";
+    const hoverClass = "element-hoverable";
+    const lockedClass = element.locked ? "element-locked" : "";
+    const dropTargetClass = !readOnly && isContainer && isDropOver ? "element-drop-target" : "";
+
+    const handleClick = (e: React.MouseEvent) => {
+        if (readOnly) return;
+        e.stopPropagation();
+        selectElement(element.id);
+    };
+
+    const handleReadOnlyAction = () => {
+        if (!readOnly) return;
+        if (element.actions?.type === "redirect" && element.actions.target) {
+            window.open(String(element.actions.target), "_blank", "noopener,noreferrer");
+        }
+        if (element.actions?.type === "scroll" && element.actions.target) {
+            const target = document.querySelector(String(element.actions.target));
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    };
+
+    const containerPlaceholder = (text: string) =>
+        element.children.length === 0 && (
+            <div className="container-placeholder">
+                <span>{text}</span>
+            </div>
+        );
+
+    const renderContent = () => {
+        switch (element.type) {
+            case "section":
+                return (
+                    <>
+                        {containerPlaceholder("Drop elements into this section")}
+                        <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                    </>
+                );
+
+            case "container":
+                return (
+                    <>
+                        <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                    </>
+                );
+
+            case "columns":
+                return element.children.length === 0 ? (
+                    <div style={{ display: "flex", gap: "16px", width: "100%", height: "100%" }}>
+                        {Array.from({ length: Number(element.props.columnCount) || 2 }).map((_, i) => (
+                            <div key={i} className="column-placeholder">
+                                Column {i + 1}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                );
+
+            case "stack":
+                return (
+                    <>
+                        {containerPlaceholder("Stack — elements stack vertically")}
+                        <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                    </>
+                );
+
+            case "title": {
+                const headingLevel = Math.min(Math.max(Number(element.props.level) || 2, 1), 6) as 1 | 2 | 3 | 4 | 5 | 6;
+                const HeadingTag = `h${headingLevel}` as `h${typeof headingLevel}`;
+                return (
+                    <HeadingTag
+                        className="el-title-inner"
+                        style={{
+                            margin: 0, fontSize: "inherit", fontWeight: "inherit",
+                            color: "inherit", lineHeight: "inherit",
+                            textAlign: (element.styles.textAlign as React.CSSProperties["textAlign"]) || "left",
+                            fontFamily: String(element.styles.fontFamily || "inherit"),
+                            letterSpacing: String(element.styles.letterSpacing || "normal"),
+                            textDecoration: String(element.styles.textDecoration || "none"),
+                            textTransform: (element.styles.textTransform as React.CSSProperties["textTransform"]) || "none",
+                        }}
+                    >
+                        {String(element.props.content || "Add a Title")}
+                    </HeadingTag>
+                );
+            }
+
+            case "text":
+                return (
+                    <p className="el-text-inner" style={{
+                        margin: 0,
+                        textAlign: (element.styles.textAlign as React.CSSProperties["textAlign"]) || "left",
+                        fontFamily: String(element.styles.fontFamily || "inherit"),
+                        letterSpacing: String(element.styles.letterSpacing || "normal"),
+                        textDecoration: String(element.styles.textDecoration || "none"),
+                        textTransform: (element.styles.textTransform as React.CSSProperties["textTransform"]) || "none",
+                    }}>
+                        {String(element.props.content || "Text")}
+                    </p>
+                );
+
+            case "paragraph":
+                return (
+                    <p className="el-paragraph-inner" style={{
+                        margin: 0,
+                        textAlign: (element.styles.textAlign as React.CSSProperties["textAlign"]) || "left",
+                        fontFamily: String(element.styles.fontFamily || "inherit"),
+                        letterSpacing: String(element.styles.letterSpacing || "normal"),
+                        textDecoration: String(element.styles.textDecoration || "none"),
+                        textTransform: (element.styles.textTransform as React.CSSProperties["textTransform"]) || "none",
+                    }}>
+                        {String(element.props.content || "Paragraph text...")}
+                    </p>
+                );
+
+            case "button":
+                return (
+                    <button
+                        className="el-button-inner"
+                        onClick={handleReadOnlyAction}
+                        style={{
+                            background: "inherit",
+                            backgroundColor: "inherit",
+                            color: "inherit",
+                            borderRadius: String(element.styles.borderRadius || "6px"),
+                            fontSize: String(element.styles.fontSize || "14px"),
+                            fontWeight: String(element.styles.fontWeight || "500"),
+                            cursor: "pointer",
+                            border: "none",
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            textAlign: (element.styles.textAlign as React.CSSProperties["textAlign"]) || "center",
+                            fontFamily: String(element.styles.fontFamily || "inherit"),
+                            textTransform: (element.styles.textTransform as React.CSSProperties["textTransform"]) || "none",
+                            letterSpacing: String(element.styles.letterSpacing || "normal"),
+                            padding: String(element.styles.padding || "0"),
+                        }}
+                    >
+                        {String(element.props.label || "Button")}
+                    </button>
+                );
+
+            case "image":
+                return (
+                    <img
+                        src={String(element.props.src || "")}
+                        alt={String(element.props.alt || "")}
+                        style={{
+                            width: "100%", height: "100%",
+                            objectFit: (String(element.props.objectFit || "cover")) as React.CSSProperties["objectFit"],
+                            borderRadius: String(element.styles.borderRadius || "0"),
+                        }}
+                    />
+                );
+
+            case "video":
+                return (
+                    <div className="video-placeholder">
+                        <span className="video-icon">▶</span>
+                        <span>Video Player</span>
+                        <span className="video-meta">
+                            {element.props.autoplay ? "Autoplay" : ""} {element.props.loop ? "• Loop" : ""} {element.props.muted ? "• Muted" : ""}
+                        </span>
+                    </div>
+                );
+
+            case "gallery":
+                return element.children.length === 0 ? (
+                    <div className="gallery-placeholder" style={{
+                        gridTemplateColumns: `repeat(${Number(element.props.columns) || 3}, 1fr)`,
+                        gap: `${Number(element.props.gap) || 8}px`,
+                    }}>
+                        {Array.from({ length: Number(element.props.columns) || 3 }).map((_, i) => (
+                            <div key={i} className="gallery-item-ph">🖼</div>
+                        ))}
+                    </div>
+                ) : (
+                    <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                );
+
+            case "form":
+                return (
+                    <form
+                        onSubmit={(e) => e.preventDefault()}
+                        style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", height: "100%" }}
+                    >
+                        {element.children.length === 0 ? (
+                            containerPlaceholder("Drop form elements here")
+                        ) : (
+                            <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                        )}
+                    </form>
+                );
+
+            case "input":
+                return (
+                    <input
+                        type={String(element.props.inputType || "text")}
+                        placeholder={String(element.props.placeholder || "")}
+                        required={Boolean(element.props.required)}
+                        style={{
+                            width: "100%",
+                            height: "100%",
+                            padding: String(element.styles.padding || "12px 16px"),
+                            border: String(element.styles.border || "1px solid #d1d5db"),
+                            borderRadius: String(element.styles.borderRadius || "8px"),
+                            fontSize: String(element.styles.fontSize || "14px"),
+                            backgroundColor: String(element.styles.backgroundColor || "#fff"),
+                            boxShadow: String(element.styles.boxShadow || "none"),
+                            boxSizing: "border-box",
+                            outline: "none",
+                        }}
+                        readOnly
+                    />
+                );
+
+            case "shape": {
+                const shapeType = String(element.props.shapeType || "rectangle");
+                const color = String(element.styles.backgroundColor || "#6366f1");
+                return <ShapeSVG shapeType={shapeType} color={color} />;
+            }
+
+            case "divider":
+                return <hr style={{ width: "100%", border: "none", height: "100%", backgroundColor: String(element.styles.backgroundColor || "#e5e7eb") }} />;
+
+            case "menu": {
+                const menuItems = String(element.props.items || "Home,About,Contact").split(",");
+                const isVertical = element.props.menuStyle === "vertical";
+                return (
+                    <nav style={{
+                        display: "flex",
+                        flexDirection: isVertical ? "column" : "row",
+                        gap: isVertical ? "4px" : "24px",
+                        alignItems: isVertical ? "stretch" : "center",
+                        height: "100%",
+                        padding: "0 20px",
+                    }}>
+                        {menuItems.map((item, i) => (
+                            <span key={i} className="menu-item">{item.trim()}</span>
+                        ))}
+                    </nav>
+                );
+            }
+
+            case "repeater":
+                return (
+                    <>
+                        <div className="repeater-badge">↻ Repeater</div>
+                        {containerPlaceholder("Add items to repeat")}
+                        <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                    </>
+                );
+
+            case "frame":
+                return (
+                    <div className="frame-placeholder">
+                        <span>⟨/⟩</span>
+                        <span>Embed Frame</span>
+                        <span className="frame-url">{String(element.props.src || "https://example.com")}</span>
+                    </div>
+                );
+
+            case "icon": {
+                const iconName = String(element.props.icon || "star");
+                const iconSize = Number(element.props.iconSize) || 32;
+                const iconColor = String(element.props.iconColor || "#374151");
+                const svg = ICON_SVGS[iconName];
+                return (
+                    <div className="icon-element" style={{
+                        width: "100%", height: "100%",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: iconColor,
+                    }}>
+                        <div style={{ width: iconSize, height: iconSize }}>
+                            {svg || ICON_SVGS.star}
+                        </div>
+                    </div>
+                );
+            }
+
+            case "spacer":
+                return (
+                    <div className="spacer-element" style={{
+                        width: "100%",
+                        height: `${Number(element.props.spacerHeight) || 40}px`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    }}>
+                        <span className="spacer-label">↕ Spacer</span>
+                    </div>
+                );
+
+            case "socialbar": {
+                const platforms = ["facebook", "twitter", "instagram", "linkedin", "youtube"];
+                const enabledPlatforms = platforms.filter(p => element.props[p]);
+                const iconSize = Number(element.props.iconSize) || 24;
+                const iconStyle = String(element.props.iconStyle || "filled");
+                return (
+                    <div className="social-bar" style={{ display: "flex", gap: "12px", alignItems: "center", justifyContent: "center", height: "100%" }}>
+                        {enabledPlatforms.length > 0 ? enabledPlatforms.map(p => (
+                            <SocialIcon key={p} platform={p} size={iconSize} style={iconStyle} />
+                        )) : (
+                            <span className="social-placeholder">Add social links</span>
+                        )}
+                    </div>
+                );
+            }
+
+            case "accordion": {
+                const headerText = String(element.props.headerText || "Accordion Header");
+                const expanded = Boolean(element.props.expanded);
+                return (
+                    <div className="accordion-element">
+                        <div className="accordion-header">
+                            <span>{headerText}</span>
+                            <span className="accordion-arrow">{expanded ? "▼" : "▶"}</span>
+                        </div>
+                        {expanded && (
+                            <div className="accordion-body">
+                                {element.children.length === 0 ? (
+                                    containerPlaceholder("Drop content here")
+                                ) : (
+                                    <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            case "tabs": {
+                const tabTitles = String(element.props.tabTitles || "Tab 1,Tab 2,Tab 3").split(",");
+                const activeTab = Number(element.props.activeTab) || 0;
+                return (
+                    <div className="tabs-element">
+                        <div className="tabs-header">
+                            {tabTitles.map((title, i) => (
+                                <button key={i} className={`tab-btn ${i === activeTab ? "active" : ""}`}>
+                                    {title.trim()}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="tabs-body">
+                            {element.children.length === 0 ? (
+                                containerPlaceholder("Drop content in tab")
+                            ) : (
+                                <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div
+            ref={isContainer && !readOnly ? setDropRef : undefined}
+            data-element-id={element.id}
+            data-element-type={element.type}
+            className={`element-wrapper ${selectionClass} ${hoverClass} ${lockedClass} ${dropTargetClass}`}
+            style={mergedStyles}
+            onClick={handleClick}
+        >
+            {renderContent()}
+            {isSelected && !element.locked && !readOnly && <ResizeHandles />}
+        </div>
+    );
+};
+
+const Renderer: React.FC<RendererProps> = ({ elements, parentId = null, isRoot = false, readOnly = false }) => {
+    void parentId;
+    return (
+        <>
+            {elements.map((el) => (
+                <ElementRenderer key={el.id} element={el} isRoot={isRoot} readOnly={readOnly} />
+            ))}
+        </>
+    );
+};
+
+export default Renderer;
