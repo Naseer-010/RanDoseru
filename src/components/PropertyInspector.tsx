@@ -1,7 +1,7 @@
 "use client";
 
 import { useEditorStore } from "@/store/editorStore";
-import { AnimationData, ActionData, CONTAINER_TYPES } from "@/types";
+import { AnimationData, ActionData, CONTAINER_TYPES, ElementNode } from "@/types";
 import { useState } from "react";
 import {
     Eye, EyeOff, Lock, Unlock, Copy, Trash2, ChevronRight,
@@ -17,6 +17,19 @@ const ICON_OPTIONS = [
     "star", "heart", "home", "search", "mail", "phone",
     "settings", "check", "close", "arrow", "user", "cart",
 ];
+
+const FORM_FIELD_TYPES = [
+    "text",
+    "email",
+    "password",
+    "number",
+    "tel",
+    "url",
+    "date",
+    "textarea",
+] as const;
+
+const FORM_REQUEST_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 // Collapsible section component
 const Section: React.FC<{
@@ -55,6 +68,9 @@ const parseNumericInput = (value: string): number | null => {
 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+
+const createElementId = (): string =>
+    globalThis.crypto?.randomUUID?.() || `el_${Math.random().toString(36).slice(2, 10)}`;
 
 const getElementDisplayName = (label: string | undefined, type: string): string => {
     const trimmed = String(label || "").trim();
@@ -285,6 +301,68 @@ const PropertyInspector: React.FC = () => {
         }
         setRenamingElementId(null);
     };
+    const formFields = el.type === "form"
+        ? el.children.filter((child) => child.type === "input")
+        : [];
+    const updateFormChildren = (nextChildren: ElementNode[]) => {
+        if (el.type !== "form") return;
+        updateElement(el.id, { children: nextChildren });
+    };
+    const updateFormField = (fieldId: string, updates: Partial<ElementNode>) => {
+        if (el.type !== "form") return;
+        const nextChildren = el.children.map((child) => {
+            if (child.id !== fieldId) return child;
+            return {
+                ...child,
+                ...updates,
+                props: updates.props ? { ...child.props, ...updates.props } : child.props,
+                styles: updates.styles ? { ...child.styles, ...updates.styles } : child.styles,
+            };
+        });
+        updateFormChildren(nextChildren);
+    };
+    const addFormField = () => {
+        if (el.type !== "form") return;
+        const nextIndex = formFields.length + 1;
+        const inputNode: ElementNode = {
+            id: createElementId(),
+            type: "input",
+            label: `Field ${nextIndex}`,
+            props: {
+                name: `field_${nextIndex}`,
+                placeholder: `Field ${nextIndex}`,
+                inputType: "text",
+                required: false,
+            },
+            styles: {
+                padding: "10px 14px",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                fontSize: "14px",
+                width: "100%",
+                backgroundColor: "#ffffff",
+            },
+            x: 0,
+            y: 0,
+            w: 360,
+            h: 40,
+            opacity: 1,
+            rotation: 0,
+            visible: true,
+            locked: false,
+            children: [],
+        };
+        const submitIndex = el.children.findIndex((child) => child.type === "button");
+        const insertAt = submitIndex >= 0 ? submitIndex : el.children.length;
+        const nextChildren = [...el.children];
+        nextChildren.splice(insertAt, 0, inputNode);
+        updateFormChildren(nextChildren);
+    };
+    const removeFormField = (fieldId: string) => {
+        if (el.type !== "form") return;
+        updateFormChildren(el.children.filter((child) => child.id !== fieldId));
+    };
+    const formRequestMethod = String(el.props.requestMethod || "POST").toUpperCase();
 
     const isTextElement = el.type === "text" || el.type === "title" || el.type === "paragraph";
     const isContainerType = CONTAINER_TYPES.includes(el.type);
@@ -1308,37 +1386,194 @@ const PropertyInspector: React.FC = () => {
                             </Section>
                         )}
 
-                        {/* Actions for forms */}
                         {el.type === "form" && (
-                            <Section title="Actions">
-                                <Field label="Action type">
-                                    <select
-                                        value={el.actions?.type || "none"}
-                                        onChange={(e) =>
-                                            setAction({
-                                                type: e.target.value as ActionData["type"],
-                                                target: el.actions?.target,
-                                            })
-                                        }
-                                    >
-                                        {["none", "submit", "redirect", "api_call", "scroll"].map((t) => (
-                                            <option key={t} value={t}>{t}</option>
-                                        ))}
-                                    </select>
-                                </Field>
-                                {el.actions?.type && el.actions.type !== "none" && el.actions.type !== "submit" && (
-                                    <Field label="Target URL">
-                                        <input
-                                            type="text"
-                                            value={el.actions?.target || ""}
-                                            onChange={(e) =>
-                                                setAction({ type: el.actions?.type || "redirect", target: e.target.value })
-                                            }
-                                            placeholder="https://..."
-                                        />
+                            <>
+                                <Section title="Fields">
+                                    <div className="insp-form-fields-header">
+                                        <span>{formFields.length} field{formFields.length === 1 ? "" : "s"}</span>
+                                        <button className="insp-form-add-btn" type="button" onClick={addFormField}>
+                                            + Add Field
+                                        </button>
+                                    </div>
+
+                                    {formFields.length === 0 ? (
+                                        <div className="insp-form-empty">
+                                            Add input fields for your form schema.
+                                        </div>
+                                    ) : (
+                                        formFields.map((field, index) => {
+                                            const fieldTypeRaw = String(field.props.inputType || "text");
+                                            const fieldType = FORM_FIELD_TYPES.includes(
+                                                fieldTypeRaw as (typeof FORM_FIELD_TYPES)[number]
+                                            )
+                                                ? fieldTypeRaw as (typeof FORM_FIELD_TYPES)[number]
+                                                : "text";
+                                            return (
+                                                <div key={field.id} className="insp-form-field-card">
+                                                    <div className="insp-form-field-card-head">
+                                                        <span className="insp-form-field-index">Field {index + 1}</span>
+                                                        <button
+                                                            className="insp-form-remove-btn"
+                                                            type="button"
+                                                            title="Remove field"
+                                                            onClick={() => removeFormField(field.id)}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="insp-row-2">
+                                                        <Field label="Name">
+                                                            <input
+                                                                type="text"
+                                                                value={String(field.props.name || "")}
+                                                                onChange={(e) =>
+                                                                    updateFormField(field.id, {
+                                                                        props: { name: e.target.value },
+                                                                    })
+                                                                }
+                                                                placeholder={`field_${index + 1}`}
+                                                            />
+                                                        </Field>
+                                                        <Field label="Type">
+                                                            <select
+                                                                value={fieldType}
+                                                                onChange={(e) => {
+                                                                    const nextType = e.target.value as (typeof FORM_FIELD_TYPES)[number];
+                                                                    updateFormField(field.id, {
+                                                                        h: nextType === "textarea" ? 96 : 40,
+                                                                        props: { inputType: nextType },
+                                                                    });
+                                                                }}
+                                                            >
+                                                                {FORM_FIELD_TYPES.map((type) => (
+                                                                    <option key={type} value={type}>{type}</option>
+                                                                ))}
+                                                            </select>
+                                                        </Field>
+                                                    </div>
+
+                                                    <Field label="Label">
+                                                        <input
+                                                            type="text"
+                                                            value={String(field.label || "")}
+                                                            onChange={(e) => updateFormField(field.id, { label: e.target.value })}
+                                                            placeholder={`Field ${index + 1}`}
+                                                        />
+                                                    </Field>
+
+                                                    <Field label="Placeholder">
+                                                        <input
+                                                            type="text"
+                                                            value={String(field.props.placeholder || "")}
+                                                            onChange={(e) =>
+                                                                updateFormField(field.id, {
+                                                                    props: { placeholder: e.target.value },
+                                                                })
+                                                            }
+                                                            placeholder="Enter value..."
+                                                        />
+                                                    </Field>
+
+                                                    <div className="insp-row-2">
+                                                        <Field label="Required">
+                                                            <label className="toggle-switch">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={Boolean(field.props.required)}
+                                                                    onChange={(e) =>
+                                                                        updateFormField(field.id, {
+                                                                            props: { required: e.target.checked },
+                                                                        })
+                                                                    }
+                                                                />
+                                                                <span className="toggle-slider" />
+                                                            </label>
+                                                        </Field>
+                                                        <Field label="Max Length">
+                                                            <input
+                                                                type="number"
+                                                                min={1}
+                                                                value={String(field.props.maxLength || "")}
+                                                                onChange={(e) =>
+                                                                    updateFormField(field.id, {
+                                                                        props: {
+                                                                            maxLength: e.target.value.trim()
+                                                                                ? Number(e.target.value)
+                                                                                : "",
+                                                                        },
+                                                                    })
+                                                                }
+                                                                placeholder="None"
+                                                            />
+                                                        </Field>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </Section>
+
+                                <Section title="Actions">
+                                    <Field label="Action type">
+                                        <select
+                                            value={el.actions?.type || "none"}
+                                            onChange={(e) => {
+                                                const nextType = e.target.value as ActionData["type"];
+                                                setAction({ type: nextType, target: el.actions?.target || "" });
+                                                if ((nextType === "submit" || nextType === "api_call") && !String(el.props.requestMethod || "").trim()) {
+                                                    setProp("requestMethod", "POST");
+                                                }
+                                            }}
+                                        >
+                                            {["none", "submit", "redirect", "api_call", "scroll"].map((t) => (
+                                                <option key={t} value={t}>{t}</option>
+                                            ))}
+                                        </select>
                                     </Field>
-                                )}
-                            </Section>
+
+                                    {(el.actions?.type === "submit" || el.actions?.type === "api_call") && (
+                                        <>
+                                            <Field label="Request Method">
+                                                <select
+                                                    value={FORM_REQUEST_METHODS.includes(formRequestMethod as (typeof FORM_REQUEST_METHODS)[number])
+                                                        ? formRequestMethod
+                                                        : "POST"}
+                                                    onChange={(e) => setProp("requestMethod", e.target.value)}
+                                                >
+                                                    {FORM_REQUEST_METHODS.map((method) => (
+                                                        <option key={method} value={method}>{method}</option>
+                                                    ))}
+                                                </select>
+                                            </Field>
+                                            <Field label="Request URL">
+                                                <input
+                                                    type="text"
+                                                    value={String(el.props.requestUrl || "")}
+                                                    onChange={(e) => {
+                                                        setProp("requestUrl", e.target.value);
+                                                        setAction({ type: el.actions?.type || "submit", target: e.target.value });
+                                                    }}
+                                                    placeholder="https://api.example.com/submit"
+                                                />
+                                            </Field>
+                                        </>
+                                    )}
+
+                                    {(el.actions?.type === "redirect" || el.actions?.type === "scroll") && (
+                                        <Field label="Target URL">
+                                            <input
+                                                type="text"
+                                                value={el.actions?.target || ""}
+                                                onChange={(e) =>
+                                                    setAction({ type: el.actions?.type || "redirect", target: e.target.value })
+                                                }
+                                                placeholder="https://..."
+                                            />
+                                        </Field>
+                                    )}
+                                </Section>
+                            </>
                         )}
                     </>
                 )}

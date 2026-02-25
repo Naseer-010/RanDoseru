@@ -344,26 +344,36 @@ const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, read
                 );
 
             case "form":
-                return (
-                    <form
-                        onSubmit={(e) => e.preventDefault()}
-                        style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", height: "100%" }}
-                    >
-                        {element.children.length === 0 ? (
-                            containerPlaceholder("Drop form elements here")
-                        ) : (
-                            <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
-                        )}
-                    </form>
-                );
+                {
+                    const requestMethod = String(element.props.requestMethod || "POST").toUpperCase();
+                    const htmlMethod = requestMethod === "GET" ? "get" : "post";
+                    const requestUrl = String(element.props.requestUrl || "");
+                    return (
+                        <form
+                            method={htmlMethod}
+                            action={requestUrl || undefined}
+                            data-request-method={requestMethod}
+                            onSubmit={(e) => e.preventDefault()}
+                            style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", height: "100%" }}
+                        >
+                            {element.children.length === 0 ? (
+                                containerPlaceholder("Drop form elements here")
+                            ) : (
+                                <Renderer elements={element.children} parentId={element.id} isRoot={false} readOnly={readOnly} />
+                            )}
+                        </form>
+                    );
+                }
 
             case "input":
-                return (
-                    <input
-                        type={String(element.props.inputType || "text")}
-                        placeholder={String(element.props.placeholder || "")}
-                        required={Boolean(element.props.required)}
-                        style={{
+                {
+                    const inputType = String(element.props.inputType || "text");
+                    const commonInputProps = {
+                        name: String(element.props.name || ""),
+                        placeholder: String(element.props.placeholder || ""),
+                        required: Boolean(element.props.required),
+                        maxLength: Number(element.props.maxLength) > 0 ? Number(element.props.maxLength) : undefined,
+                        style: {
                             width: "100%",
                             height: "100%",
                             padding: String(element.styles.padding || "12px 16px"),
@@ -372,12 +382,28 @@ const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, read
                             fontSize: String(element.styles.fontSize || "14px"),
                             backgroundColor: String(element.styles.backgroundColor || "#fff"),
                             boxShadow: String(element.styles.boxShadow || "none"),
-                            boxSizing: "border-box",
+                            boxSizing: "border-box" as const,
                             outline: "none",
-                        }}
-                        readOnly
-                    />
-                );
+                            resize: "none" as const,
+                        },
+                        readOnly: true,
+                    };
+
+                    if (inputType === "textarea") {
+                        return (
+                            <textarea
+                                {...commonInputProps}
+                            />
+                        );
+                    }
+
+                    return (
+                        <input
+                            {...commonInputProps}
+                            type={inputType}
+                        />
+                    );
+                }
 
             case "shape": {
                 const shapeType = String(element.props.shapeType || "rectangle");

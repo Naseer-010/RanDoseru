@@ -1112,6 +1112,85 @@ body {
   gap: 8px;
 }
 
+.insp-form-fields-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.insp-form-fields-header span {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.insp-form-add-btn {
+  height: 26px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-2);
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.insp-form-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.insp-form-empty {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.insp-form-field-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.insp-form-field-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.insp-form-field-index {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.insp-form-remove-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: var(--transition);
+}
+
+.insp-form-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+}
+
 .color-row {
   display: flex;
   gap: 6px;

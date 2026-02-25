@@ -187,7 +187,10 @@ export const templates: Record<ElementType, Omit<ElementNode, "id">> = {
     form: {
         type: "form",
         label: "Form",
-        props: {},
+        props: {
+            requestMethod: "POST",
+            requestUrl: "/api/contact",
+        },
         styles: {
             padding: "24px",
             backgroundColor: "#ffffff",
@@ -212,7 +215,7 @@ export const templates: Record<ElementType, Omit<ElementNode, "id">> = {
                 id: "__form_input_name__",
                 type: "input",
                 label: "Name Input",
-                props: { placeholder: "Your name", inputType: "text" },
+                props: { name: "name", placeholder: "Your name", inputType: "text", required: true },
                 styles: { padding: "10px 14px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", width: "100%", backgroundColor: "#fff", marginBottom: "10px" },
                 x: 0, y: 0, w: 360, h: 40,
                 opacity: 1, rotation: 0, visible: true, locked: false,
@@ -222,7 +225,7 @@ export const templates: Record<ElementType, Omit<ElementNode, "id">> = {
                 id: "__form_input_email__",
                 type: "input",
                 label: "Email Input",
-                props: { placeholder: "Your email", inputType: "email" },
+                props: { name: "email", placeholder: "Your email", inputType: "email", required: true },
                 styles: { padding: "10px 14px", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "14px", width: "100%", backgroundColor: "#fff", marginBottom: "10px" },
                 x: 0, y: 0, w: 360, h: 40,
                 opacity: 1, rotation: 0, visible: true, locked: false,
@@ -505,4 +508,3 @@ export const sidebarCategories: SidebarCategory[] = [
         ],
     },
 ];
-

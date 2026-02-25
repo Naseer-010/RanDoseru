@@ -138,10 +138,26 @@ const renderElement = (
             return `<div ${clsAttr}="${className}"><div ${clsAttr}="${className}__header">${String(el.props?.headerText || "Accordion")}</div><div ${clsAttr}="${className}__body">${children || "Accordion content"}</div></div>`;
         case "tabs":
             return `<div ${clsAttr}="${className}"><div ${clsAttr}="${className}__tabs">${String(el.props?.tabTitles || "Tab 1,Tab 2").split(",").map((t) => `<button>${t.trim()}</button>`).join("")}</div><div ${clsAttr}="${className}__body">${children || "Tab content"}</div></div>`;
-        case "form":
-            return `<form ${clsAttr}="${className}">${children}</form>`;
-        case "input":
-            return `<input ${clsAttr}="${className}" type="${String(el.props?.inputType || "text")}" placeholder="${String(el.props?.placeholder || "")}" />`;
+        case "form": {
+            const requestMethod = String(el.props?.requestMethod || "POST").toUpperCase();
+            const htmlMethod = requestMethod === "GET" ? "get" : "post";
+            const requestUrl = String(el.props?.requestUrl || "").trim();
+            const actionAttr = requestUrl ? ` action="${requestUrl}"` : "";
+            return `<form ${clsAttr}="${className}" method="${htmlMethod}" data-request-method="${requestMethod}"${actionAttr}>${children}</form>`;
+        }
+        case "input": {
+            const inputType = String(el.props?.inputType || "text");
+            const placeholder = String(el.props?.placeholder || "");
+            const name = String(el.props?.name || "").trim();
+            const nameAttr = name ? ` name="${name}"` : "";
+            const requiredAttr = el.props?.required ? " required" : "";
+            const maxLength = Number(el.props?.maxLength);
+            const maxLengthAttr = Number.isFinite(maxLength) && maxLength > 0 ? ` maxlength="${maxLength}"` : "";
+            if (inputType === "textarea") {
+                return `<textarea ${clsAttr}="${className}"${nameAttr} placeholder="${placeholder}"${requiredAttr}${maxLengthAttr}></textarea>`;
+            }
+            return `<input ${clsAttr}="${className}" type="${inputType}"${nameAttr} placeholder="${placeholder}"${requiredAttr}${maxLengthAttr} />`;
+        }
         case "shape":
             return `<div ${clsAttr}="${className}"></div>`;
         case "spacer":
