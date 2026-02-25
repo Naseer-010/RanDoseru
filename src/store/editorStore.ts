@@ -38,6 +38,7 @@ interface EditorStore {
     elements: ElementNode[];
     globalElements: ElementNode[];
     selectedElementId: string | null;
+    selectedElementIds: string[];
     sidebarOpen: string | null;
 
     // Clipboard
@@ -56,14 +57,19 @@ interface EditorStore {
     updateElementSize: (id: string, w: number, h: number) => void;
     updateElementOpacity: (id: string, opacity: number) => void;
     updateElementRotation: (id: string, rotation: number) => void;
+    updateElementRotationLive: (id: string, rotation: number) => void;
     toggleVisibility: (id: string) => void;
     toggleLock: (id: string) => void;
     deleteElement: (id: string) => void;
     duplicateElement: (id: string) => void;
     moveElement: (id: string, targetParentId: string | null, index: number) => void;
+    moveGlobalElement: (id: string, targetParentId: string | null, index: number) => void;
     selectElement: (id: string | null) => void;
+    selectElements: (ids: string[]) => void;
+    toggleSelectElement: (id: string) => void;
     setSidebarOpen: (categoryId: string | null) => void;
     reorderElements: (parentId: string | null, oldIndex: number, newIndex: number) => void;
+    reorderGlobalElements: (parentId: string | null, oldIndex: number, newIndex: number) => void;
     undo: () => void;
     redo: () => void;
 
@@ -99,6 +105,12 @@ interface EditorStore {
     // Canvas settings
     canvasSettings: { backgroundColor: string; width: number; height: number };
     updateCanvasSettings: (settings: Partial<{ backgroundColor: string; width: number; height: number }>) => void;
+
+    // Frontend code preview
+    frontendGeneratedCode: Record<string, string> | null;
+    frontendCodePreviewOpen: boolean;
+    setFrontendGeneratedCode: (code: Record<string, string> | null) => void;
+    setFrontendCodePreviewOpen: (open: boolean) => void;
 }
 
 // Helper to find element
@@ -129,43 +141,87 @@ const findPathToElement = (
     return null;
 };
 
-// Helper to update element in tree
+// Collect all ids in a subtree
+const collectElementIds = (element: ElementNode): string[] => {
+    const ids: string[] = [element.id];
+    element.children.forEach((child) => ids.push(...collectElementIds(child)));
+    return ids;
+};
+
+const containsId = (element: ElementNode, id: string): boolean => {
+    if (element.id === id) return true;
+    for (const child of element.children) {
+        if (containsId(child, id)) return true;
+    }
+    return false;
+};
+
+// Helper to update element in tree (preserve references when unchanged)
 const updateElementInTree = (
     elements: ElementNode[],
     id: string,
     updates: Partial<ElementNode>
 ): ElementNode[] => {
-    return elements.map((el) => {
+    let changed = false;
+    const next = elements.map((el) => {
         if (el.id === id) {
+            changed = true;
             return { ...el, ...updates, children: updates.children ?? el.children };
         }
-        return { ...el, children: updateElementInTree(el.children, id, updates) };
+        const nextChildren = updateElementInTree(el.children, id, updates);
+        if (nextChildren !== el.children) {
+            changed = true;
+            return { ...el, children: nextChildren };
+        }
+        return el;
     });
+    return changed ? next : elements;
 };
 
-// Helper to delete element from tree
+// Helper to delete element from tree (preserve references when unchanged)
 const deleteElementFromTree = (
     elements: ElementNode[],
     id: string
 ): ElementNode[] => {
-    return elements
-        .filter((el) => el.id !== id)
-        .map((el) => ({ ...el, children: deleteElementFromTree(el.children, id) }));
+    let changed = false;
+    const next: ElementNode[] = [];
+    for (const el of elements) {
+        if (el.id === id) {
+            changed = true;
+            continue;
+        }
+        const nextChildren = deleteElementFromTree(el.children, id);
+        if (nextChildren !== el.children) {
+            changed = true;
+            next.push({ ...el, children: nextChildren });
+        } else {
+            next.push(el);
+        }
+    }
+    return changed ? next : elements;
 };
 
-// Helper to add element to tree
+// Helper to add element to tree (preserve references when unchanged)
 const addElementToTree = (
     elements: ElementNode[],
     element: ElementNode,
     parentId?: string
 ): ElementNode[] => {
     if (!parentId) return [...elements, element];
-    return elements.map((el) => {
+    let changed = false;
+    const next = elements.map((el) => {
         if (el.id === parentId) {
+            changed = true;
             return { ...el, children: [...el.children, element] };
         }
-        return { ...el, children: addElementToTree(el.children, element, parentId) };
+        const nextChildren = addElementToTree(el.children, element, parentId);
+        if (nextChildren !== el.children) {
+            changed = true;
+            return { ...el, children: nextChildren };
+        }
+        return el;
     });
+    return changed ? next : elements;
 };
 
 // Deep clone with new IDs
@@ -213,14 +269,22 @@ const insertElementAtIndex = (
         arr.splice(index, 0, element);
         return arr;
     }
-    return elements.map((el) => {
+    let changed = false;
+    const next = elements.map((el) => {
         if (el.id === parentId) {
             const c = [...el.children];
             c.splice(index, 0, element);
+            changed = true;
             return { ...el, children: c };
         }
-        return { ...el, children: insertElementAtIndex(el.children, element, parentId, index) };
+        const nextChildren = insertElementAtIndex(el.children, element, parentId, index);
+        if (nextChildren !== el.children) {
+            changed = true;
+            return { ...el, children: nextChildren };
+        }
+        return el;
     });
+    return changed ? next : elements;
 };
 
 // Find parent of element
@@ -237,6 +301,40 @@ const findParentOf = (
     return null;
 };
 
+// Reorder within a parent at any depth
+const reorderInTree = (
+    elements: ElementNode[],
+    parentId: string | null,
+    oldIndex: number,
+    newIndex: number
+): ElementNode[] => {
+    if (!parentId) {
+        const arr = [...elements];
+        if (oldIndex < 0 || newIndex < 0 || oldIndex >= arr.length || newIndex >= arr.length) return elements;
+        const [r] = arr.splice(oldIndex, 1);
+        arr.splice(newIndex, 0, r);
+        return arr;
+    }
+    let changed = false;
+    const next = elements.map((el) => {
+        if (el.id === parentId) {
+            const c = [...el.children];
+            if (oldIndex < 0 || newIndex < 0 || oldIndex >= c.length || newIndex >= c.length) return el;
+            const [r] = c.splice(oldIndex, 1);
+            c.splice(newIndex, 0, r);
+            changed = true;
+            return { ...el, children: c };
+        }
+        const nextChildren = reorderInTree(el.children, parentId, oldIndex, newIndex);
+        if (nextChildren !== el.children) {
+            changed = true;
+            return { ...el, children: nextChildren };
+        }
+        return el;
+    });
+    return changed ? next : elements;
+};
+
 // Push a snapshot to history and mutate elements
 const pushHistory = (state: EditorStore): { past: ElementNode[][]; future: ElementNode[][] } => {
     const newPast = [...state.past, state.elements].slice(-MAX_HISTORY);
@@ -251,6 +349,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     elements: [],
     globalElements: [],
     selectedElementId: null,
+    selectedElementIds: [],
     sidebarOpen: "add",
     clipboard: null,
     past: [],
@@ -258,6 +357,8 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     canUndo: false,
     canRedo: false,
     canvasSettings: { backgroundColor: "#ffffff", width: 1280, height: 900 },
+    frontendGeneratedCode: null,
+    frontendCodePreviewOpen: false,
 
     addElement: (elementData, parentId, dropX, dropY) => {
         const id = uuidv4();
@@ -404,6 +505,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         });
     },
 
+    updateElementRotationLive: (id, rotation) => {
+        // Rotation updates are frequent during drag — don't push to history
+        set((state) => {
+            if (findElementById(state.globalElements, id)) {
+                return {
+                    globalElements: updateElementInTree(state.globalElements, id, { rotation }),
+                };
+            }
+
+            if (!findElementById(state.elements, id)) return state;
+            return {
+                elements: updateElementInTree(state.elements, id, { rotation }),
+            };
+        });
+    },
+
     toggleVisibility: (id) => {
         set((state) => {
             const globalEl = findElementById(state.globalElements, id);
@@ -448,18 +565,24 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     deleteElement: (id) => {
         set((state) => {
-            if (findElementById(state.globalElements, id)) {
+            const globalEl = findElementById(state.globalElements, id);
+            if (globalEl) {
+                const removedIds = collectElementIds(globalEl);
                 return {
                     globalElements: deleteElementFromTree(state.globalElements, id),
-                    selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+                    selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
+                    selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
                 };
             }
 
-            if (!findElementById(state.elements, id)) return state;
+            const pageEl = findElementById(state.elements, id);
+            if (!pageEl) return state;
+            const removedIds = collectElementIds(pageEl);
             const history = pushHistory(state);
             return {
                 elements: deleteElementFromTree(state.elements, id),
-                selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+                selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
+                selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
                 ...history,
                 canUndo: true,
                 canRedo: false,
@@ -507,6 +630,10 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     moveElement: (id, targetParentId, index) => {
         set((state) => {
+            const element = findElementById(state.elements, id);
+            if (!element) return state;
+            if (targetParentId && containsId(element, targetParentId)) return state;
+            if (targetParentId && !findElementById(state.elements, targetParentId)) return state;
             const history = pushHistory(state);
             const { elements, removed } = removeAndGetElement(state.elements, id);
             if (!removed) return state;
@@ -519,8 +646,44 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         });
     },
 
+    moveGlobalElement: (id, targetParentId, index) => {
+        set((state) => {
+            const element = findElementById(state.globalElements, id);
+            if (!element) return state;
+            if (targetParentId && containsId(element, targetParentId)) return state;
+            if (targetParentId && !findElementById(state.globalElements, targetParentId)) return state;
+            const { elements, removed } = removeAndGetElement(state.globalElements, id);
+            if (!removed) return state;
+            return {
+                globalElements: insertElementAtIndex(elements, removed, targetParentId, index),
+            };
+        });
+    },
+
     selectElement: (id) => {
-        set({ selectedElementId: id });
+        set({ selectedElementId: id, selectedElementIds: id ? [id] : [] });
+    },
+
+    selectElements: (ids) => {
+        const unique = Array.from(new Set(ids));
+        set({
+            selectedElementIds: unique,
+            selectedElementId: unique.length > 0 ? unique[unique.length - 1] : null,
+        });
+    },
+
+    toggleSelectElement: (id) => {
+        set((state) => {
+            const exists = state.selectedElementIds.includes(id);
+            const nextIds = exists
+                ? state.selectedElementIds.filter((sid) => sid !== id)
+                : [...state.selectedElementIds, id];
+            const nextPrimary = nextIds.length > 0 ? nextIds[nextIds.length - 1] : null;
+            return {
+                selectedElementIds: nextIds,
+                selectedElementId: nextPrimary,
+            };
+        });
     },
 
     setSidebarOpen: (categoryId) => {
@@ -529,27 +692,22 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
 
     reorderElements: (parentId, oldIndex, newIndex) => {
         set((state) => {
+            if (oldIndex === newIndex) return state;
+            if (parentId && !findElementById(state.elements, parentId)) return state;
             const history = pushHistory(state);
-            if (!parentId) {
-                const arr = [...state.elements];
-                const [r] = arr.splice(oldIndex, 1);
-                arr.splice(newIndex, 0, r);
-                return { elements: arr, ...history, canUndo: true, canRedo: false };
-            }
-            return {
-                elements: state.elements.map((el) => {
-                    if (el.id === parentId) {
-                        const c = [...el.children];
-                        const [r] = c.splice(oldIndex, 1);
-                        c.splice(newIndex, 0, r);
-                        return { ...el, children: c };
-                    }
-                    return el;
-                }),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+            const nextElements = reorderInTree(state.elements, parentId, oldIndex, newIndex);
+            if (nextElements === state.elements) return state;
+            return { elements: nextElements, ...history, canUndo: true, canRedo: false };
+        });
+    },
+
+    reorderGlobalElements: (parentId, oldIndex, newIndex) => {
+        set((state) => {
+            if (oldIndex === newIndex) return state;
+            if (parentId && !findElementById(state.globalElements, parentId)) return state;
+            const nextElements = reorderInTree(state.globalElements, parentId, oldIndex, newIndex);
+            if (nextElements === state.globalElements) return state;
+            return { globalElements: nextElements };
         });
     },
 
@@ -762,10 +920,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     },
 
     deleteGlobalElement: (id) => {
-        set((state) => ({
-            globalElements: deleteElementFromTree(state.globalElements, id),
-            selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
-        }));
+        set((state) => {
+            const globalEl = findElementById(state.globalElements, id);
+            if (!globalEl) return state;
+            const removedIds = collectElementIds(globalEl);
+            return {
+                globalElements: deleteElementFromTree(state.globalElements, id),
+                selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
+                selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
+            };
+        });
     },
 
     // ─── Templates ───
@@ -797,4 +961,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
             canvasSettings: { ...state.canvasSettings, ...settings },
         }));
     },
+
+    setFrontendGeneratedCode: (code) => set({ frontendGeneratedCode: code }),
+    setFrontendCodePreviewOpen: (open) => set({ frontendCodePreviewOpen: open }),
 }));

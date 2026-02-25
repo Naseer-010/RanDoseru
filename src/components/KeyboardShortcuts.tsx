@@ -10,6 +10,7 @@ const KeyboardShortcuts: React.FC = () => {
         selectedElementId,
         getElement,
         copyElement, cutElement, pasteElement,
+        updateElementPosition,
     } = useEditorStore();
 
     useEffect(() => {
@@ -70,11 +71,22 @@ const KeyboardShortcuts: React.FC = () => {
                 duplicateElement(selectedElementId);
                 return;
             }
+
+            // Arrow keys — nudge selected
+            if (selectedElementId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+                e.preventDefault();
+                const el = getElement(selectedElementId);
+                if (!el || el.locked) return;
+                const step = e.shiftKey ? 10 : 1;
+                const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+                const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+                updateElementPosition(selectedElementId, Math.max(0, el.x + dx), Math.max(0, el.y + dy));
+            }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [undo, redo, deleteElement, duplicateElement, selectedElementId, getElement, copyElement, cutElement, pasteElement]);
+    }, [undo, redo, deleteElement, duplicateElement, selectedElementId, getElement, copyElement, cutElement, pasteElement, updateElementPosition]);
 
     return null;
 };

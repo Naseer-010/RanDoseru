@@ -1,12 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useBackendStore } from "@/store/backendStore";
 import ServiceContainerComponent from "./ServiceContainer";
 import { Plus, Zap } from "lucide-react";
 
 const BackendCanvas: React.FC = () => {
     const { services, connections, addService, selectService, selectBlock } = useBackendStore();
+    const [connectionPaths, setConnectionPaths] = useState<
+        { id: string; d: string; label: string; x: number; y: number }[]
+    >([]);
 
     const handleCanvasClick = (e: React.MouseEvent) => {
         if ((e.target as HTMLElement).classList.contains("backend-canvas-area")) {
@@ -14,6 +17,48 @@ const BackendCanvas: React.FC = () => {
             selectBlock(null);
         }
     };
+
+    useEffect(() => {
+        const computePaths = () => {
+            const canvas = document.querySelector(".backend-canvas-area") as HTMLElement | null;
+            if (!canvas) return;
+            const canvasRect = canvas.getBoundingClientRect();
+            const next = connections
+                .map((conn) => {
+                    const fromEl = document.getElementById(`service-${conn.fromServiceId}`);
+                    const toEl = document.getElementById(`service-${conn.toServiceId}`);
+                    if (!fromEl || !toEl) return null;
+                    const fromRect = fromEl.getBoundingClientRect();
+                    const toRect = toEl.getBoundingClientRect();
+                    const x1 = fromRect.right - canvasRect.left;
+                    const y1 = fromRect.top + fromRect.height / 2 - canvasRect.top;
+                    const x2 = toRect.left - canvasRect.left;
+                    const y2 = toRect.top + toRect.height / 2 - canvasRect.top;
+                    const d = `M ${x1} ${y1} C ${x1 + 60} ${y1}, ${x2 - 60} ${y2}, ${x2} ${y2}`;
+                    return {
+                        id: conn.id,
+                        d,
+                        label: conn.label,
+                        x: (x1 + x2) / 2,
+                        y: (y1 + y2) / 2 - 8,
+                    };
+                })
+                .filter((v): v is { id: string; d: string; label: string; x: number; y: number } => Boolean(v));
+            setConnectionPaths(next);
+        };
+
+        const rafId = requestAnimationFrame(computePaths);
+        const handleResize = () => requestAnimationFrame(computePaths);
+        const canvas = document.querySelector(".backend-canvas-area");
+        window.addEventListener("resize", handleResize);
+        canvas?.addEventListener("scroll", handleResize);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            window.removeEventListener("resize", handleResize);
+            canvas?.removeEventListener("scroll", handleResize);
+        };
+    }, [connections, services.length]);
 
     return (
         <div className="backend-canvas">
@@ -56,43 +101,29 @@ const BackendCanvas: React.FC = () => {
             </div>
 
             {/* Connection lines (SVG overlay) */}
-            {connections.length > 0 && (
+            {connectionPaths.length > 0 && (
                 <svg className="backend-connections-svg">
-                    {connections.map((conn) => {
-                        const fromEl = document.getElementById(`service-${conn.fromServiceId}`);
-                        const toEl = document.getElementById(`service-${conn.toServiceId}`);
-                        if (!fromEl || !toEl) return null;
-                        const fromRect = fromEl.getBoundingClientRect();
-                        const toRect = toEl.getBoundingClientRect();
-                        const canvas = document.querySelector(".backend-canvas-area");
-                        if (!canvas) return null;
-                        const canvasRect = canvas.getBoundingClientRect();
-                        const x1 = fromRect.right - canvasRect.left;
-                        const y1 = fromRect.top + fromRect.height / 2 - canvasRect.top;
-                        const x2 = toRect.left - canvasRect.left;
-                        const y2 = toRect.top + toRect.height / 2 - canvasRect.top;
-                        return (
-                            <g key={conn.id}>
-                                <path
-                                    d={`M ${x1} ${y1} C ${x1 + 60} ${y1}, ${x2 - 60} ${y2}, ${x2} ${y2}`}
-                                    fill="none"
-                                    stroke="var(--accent)"
-                                    strokeWidth="2"
-                                    strokeDasharray="6 3"
-                                    opacity="0.6"
-                                />
-                                <text
-                                    x={(x1 + x2) / 2}
-                                    y={(y1 + y2) / 2 - 8}
-                                    fill="var(--text-3)"
-                                    fontSize="11"
-                                    textAnchor="middle"
-                                >
-                                    {conn.label}
-                                </text>
-                            </g>
-                        );
-                    })}
+                    {connectionPaths.map((conn) => (
+                        <g key={conn.id}>
+                            <path
+                                d={conn.d}
+                                fill="none"
+                                stroke="var(--accent)"
+                                strokeWidth="2"
+                                strokeDasharray="6 3"
+                                opacity="0.6"
+                            />
+                            <text
+                                x={conn.x}
+                                y={conn.y}
+                                fill="var(--text-3)"
+                                fontSize="11"
+                                textAnchor="middle"
+                            >
+                                {conn.label}
+                            </text>
+                        </g>
+                    ))}
                 </svg>
             )}
         </div>

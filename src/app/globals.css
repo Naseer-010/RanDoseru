@@ -50,6 +50,14 @@
   padding: 0;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 html,
 body {
   height: 100%;
@@ -152,6 +160,11 @@ body {
 
 .header-btn.primary:hover {
   background: var(--accent-hover);
+}
+
+.header-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ======================== BODY LAYOUT ======================== */
@@ -470,10 +483,14 @@ body {
   color: var(--text-3);
 }
 
-.url-action {
+.url-action-btn {
   color: var(--accent);
-  cursor: pointer;
+  background: transparent;
+  border: none;
   font-weight: 500;
+  padding: 0;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .canvas-topbar-right .page-label {
@@ -604,6 +621,48 @@ body {
   box-shadow: 0 0 0 4px rgba(17, 109, 255, 0.12) !important;
 }
 
+.selection-box {
+  position: fixed;
+  border: 1px solid var(--accent);
+  background: rgba(17, 109, 255, 0.12);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.rotate-handle {
+  position: absolute;
+  top: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 11;
+}
+
+.rotate-line {
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  width: 1px;
+  height: 14px;
+  background: var(--accent);
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.rotate-knob {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
 .element-drop-target {
   outline: 2px dashed var(--accent) !important;
   background-color: rgba(17, 109, 255, 0.04) !important;
@@ -620,6 +679,25 @@ body {
   height: 10px;
   z-index: 10;
   pointer-events: auto;
+}
+
+.snap-guide {
+  position: absolute;
+  background: rgba(17, 109, 255, 0.7);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.snap-guide-vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.snap-guide-horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
 }
 
 .resize-handle-n {
@@ -1637,6 +1715,44 @@ body {
   overflow-y: auto;
 }
 
+.layers-section {
+  border-top: 1px solid var(--border);
+}
+
+.layers-section:first-child {
+  border-top: none;
+}
+
+.layers-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  background: var(--bg-panel);
+}
+
+.layers-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layers-section-count {
+  font-size: 10px;
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--text-2);
+}
+
+.layers-tree {
+  padding-bottom: 4px;
+}
+
 .layers-empty {
   display: flex;
   flex-direction: column;
@@ -1672,6 +1788,11 @@ body {
 
 .layer-item.layer-hidden {
   opacity: 0.5;
+}
+
+.layer-item.layer-drop-inside {
+  background: rgba(17, 109, 255, 0.18);
+  border-left-color: var(--accent);
 }
 
 .layer-icon {
@@ -4537,6 +4658,12 @@ body {
   padding: 8px;
 }
 
+.code-preview-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
 .code-file-btn {
   display: flex;
   align-items: center;
@@ -4575,6 +4702,13 @@ body {
   background: var(--bg-root);
 }
 
+.code-preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
 .code-preview-code {
   padding: 16px 20px;
   font-family: 'JetBrains Mono', monospace;
@@ -4587,4 +4721,64 @@ body {
 
 .code-preview-code code {
   display: block;
+}
+
+/* Frontend Code Panel */
+.code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.code-panel-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-2);
+}
+
+.code-panel-info p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.code-panel-info span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.code-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.code-panel-btn {
+  flex: 1;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.code-panel-btn:hover {
+  background: var(--accent-hover);
+}
+
+.code-panel-btn.secondary {
+  background: var(--bg-elevated);
+  color: var(--text-1);
+}
+
+.code-panel-btn.secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }

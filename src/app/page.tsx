@@ -13,6 +13,7 @@ import PreviewPanel from "@/components/PreviewPanel";
 import BackendCanvas from "@/components/backend/BackendCanvas";
 import BackendInspector from "@/components/backend/BackendInspector";
 import BackendHierarchy from "@/components/backend/BackendHierarchy";
+import FrontendCodePreviewPanel from "@/components/FrontendCodePreviewPanel";
 import { useEditorStore } from "@/store/editorStore";
 import { useBackendStore } from "@/store/backendStore";
 import { X, FileCode2 } from "lucide-react";
@@ -97,7 +98,7 @@ function CodePreviewPanel() {
 export default function Home() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [autosaveEnabled, setAutosaveEnabled] = useState(true);
-  const { selectElement, sidebarOpen } = useEditorStore();
+  const { selectElement, sidebarOpen, frontendCodePreviewOpen } = useEditorStore();
   const { codePreviewOpen } = useBackendStore();
 
   const isBackendMode = sidebarOpen === "backend";
@@ -132,7 +133,9 @@ export default function Home() {
           </div>
           <div className="header-right">
             <button className="header-btn" onClick={openPreview}>Preview</button>
-            <button className="header-btn primary">Publish</button>
+            <button className="header-btn primary" disabled title="Coming soon">
+              Publish
+            </button>
           </div>
         </header>
 
@@ -169,6 +172,7 @@ export default function Home() {
 
         {isPreviewOpen && <PreviewPanel onClose={() => setIsPreviewOpen(false)} />}
         {codePreviewOpen && <CodePreviewPanel />}
+        {frontendCodePreviewOpen && <FrontendCodePreviewPanel />}
       </div>
     </DndProvider>
   );

@@ -28,7 +28,17 @@ const DebugPanel: React.FC = () => {
             {expanded && (
                 <div className="debug-body">
                     <div className="debug-actions-bar">
-                        <button onClick={() => navigator.clipboard.writeText(json)}>Copy JSON</button>
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await navigator.clipboard.writeText(json);
+                                } catch {
+                                    // ignore clipboard errors in unsupported contexts
+                                }
+                            }}
+                        >
+                            Copy JSON
+                        </button>
                         <span className="debug-count">{elements.length} root element(s)</span>
                     </div>
                     <pre>{json}</pre>

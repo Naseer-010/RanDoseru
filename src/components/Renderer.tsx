@@ -95,8 +95,8 @@ interface ElementRendererProps {
 }
 
 const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, readOnly = false }) => {
-    const { selectedElementId, selectElement } = useEditorStore();
-    const isSelected = !readOnly && selectedElementId === element.id;
+    const { selectedElementId, selectedElementIds, selectElement, toggleSelectElement } = useEditorStore();
+    const isSelected = !readOnly && (selectedElementId === element.id || selectedElementIds.includes(element.id));
     const isContainer = CONTAINER_TYPES.includes(element.type);
     const { setNodeRef: setDropRef, isOver: isDropOver } = useDroppable({
         id: `drop-${element.id}`,
@@ -163,7 +163,11 @@ const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, read
     const handleClick = (e: React.MouseEvent) => {
         if (readOnly) return;
         e.stopPropagation();
-        selectElement(element.id);
+        if (e.shiftKey) {
+            toggleSelectElement(element.id);
+        } else {
+            selectElement(element.id);
+        }
     };
 
     const handleReadOnlyAction = () => {
@@ -528,7 +532,15 @@ const ElementRenderer: React.FC<ElementRendererProps> = ({ element, isRoot, read
             onClick={handleClick}
         >
             {renderContent()}
-            {isSelected && !element.locked && !readOnly && <ResizeHandles />}
+            {isSelected && !element.locked && !readOnly && (
+                <>
+                    <div className="rotate-handle" data-rotate-handle>
+                        <span className="rotate-knob" />
+                    </div>
+                    <div className="rotate-line" />
+                    <ResizeHandles />
+                </>
+            )}
         </div>
     );
 };

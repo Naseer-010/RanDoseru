@@ -6,6 +6,7 @@ import { templates, sidebarCategories } from "@/templates";
 import { ElementType, CONTAINER_TYPES } from "@/types";
 import { BACKEND_SIDEBAR_CATEGORIES, BackendBlockType } from "@/types/backend";
 import { generateProject } from "@/lib/codegen";
+import { generateFrontendProject } from "@/lib/codegen/frontend";
 import { exportAsZip } from "@/lib/codegen/exporter";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -128,7 +129,19 @@ const GlobalItem: React.FC<{
 };
 
 const Sidebar: React.FC = () => {
-    const { sidebarOpen, setSidebarOpen, globalElements, deleteGlobalElement, selectElement } = useEditorStore();
+    const {
+        sidebarOpen,
+        setSidebarOpen,
+        globalElements,
+        deleteGlobalElement,
+        selectElement,
+        elements,
+        canvasSettings,
+        pages,
+        activePageId,
+        setFrontendGeneratedCode,
+        setFrontendCodePreviewOpen,
+    } = useEditorStore();
     const [searchQuery, setSearchQuery] = useState("");
 
     const getFilteredCategories = () => {
@@ -374,10 +387,37 @@ const Sidebar: React.FC = () => {
                         <button className="flyout-close" onClick={() => setSidebarOpen(null)}>✕</button>
                     </div>
                     <div className="flyout-body">
-                        <div className="placeholder-panel">
-                            <Code2 size={32} />
-                            <p>Code Viewer</p>
-                            <span>View and edit generated HTML/CSS. Coming soon.</span>
+                        <div className="code-panel">
+                            <div className="code-panel-info">
+                                <Code2 size={24} />
+                                <div>
+                                    <p>Frontend Code</p>
+                                    <span>Generate a React project from the current canvas</span>
+                                </div>
+                            </div>
+                            <div className="code-panel-actions">
+                                <button
+                                    className="code-panel-btn"
+                                    onClick={() => {
+                                        const activePage = pages.find((p) => p.id === activePageId);
+                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage);
+                                        setFrontendGeneratedCode(files);
+                                        setFrontendCodePreviewOpen(true);
+                                    }}
+                                >
+                                    Preview Code
+                                </button>
+                                <button
+                                    className="code-panel-btn secondary"
+                                    onClick={async () => {
+                                        const activePage = pages.find((p) => p.id === activePageId);
+                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage);
+                                        await exportAsZip(files, "frontend-project");
+                                    }}
+                                >
+                                    Export ZIP
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
