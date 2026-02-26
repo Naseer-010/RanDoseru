@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Outer teal ring -->
+  <circle cx="100" cy="100" r="100" fill="#4ECDC4"/>
+  <!-- Inner black circle -->
+  <circle cx="100" cy="100" r="84" fill="#111827"/>
+  <!-- Thin inner ring -->
+  <circle cx="100" cy="100" r="88" fill="none" stroke="#4ECDC4" stroke-width="1" opacity="0.4"/>
+  <!-- Stylized R letter in teal -->
+  <g fill="#4ECDC4">
+    <!-- Vertical left bar -->
+    <rect x="58" y="52" width="20" height="100" rx="2"/>
+    <!-- Top horizontal + curve (shoulder) -->
+    <path d="M78,52 L118,52 Q146,52 146,76 Q146,98 118,100 L78,100 L78,52 Z"/>
+    <!-- Cut-out in shoulder to make it hollow -->
+    <rect x="78" y="66" width="38" height="20" rx="4" fill="#111827"/>
+    <!-- Diagonal leg -->
+    <polygon points="105,100 122,100 146,152 128,152"/>
+  </g>
+</svg>

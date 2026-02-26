@@ -1,14 +1,14 @@
-# Studio Editor 🚀
+# RanDoseru 🚀
 
 **The Database-Ready Visual Website Builder**
 
-Studio Editor is a sophisticated, multi-layered visual development platform built with Next.js 16. It enables developers and designers to build full-stack applications with a live frontend canvas, a service-oriented backend builder, and a visual routing engine that wires everything together.
+RanDoseru is a sophisticated, multi-layered visual development platform built with Next.js 16. It enables developers and designers to build full-stack applications with a live frontend canvas, a service-oriented backend builder, and a visual routing engine that wires everything together.
 
 ---
 
 ## 🏗️ Architectural Deep Dive
 
-Studio Editor is built on a **Serializable State Tree** architecture. Every action across all three canvases is captured in a unified JSON structure managed by **Zustand**. This ensures that the entire project state—from the position of a button to the database schema of a microservice—can be saved, restored, and used for deterministic code generation.
+RanDoseru is built on a **Serializable State Tree** architecture. Every action across all three canvases is captured in a unified JSON structure managed by **Zustand**. This ensures that the entire project state—from the position of a button to the database schema of a microservice—can be saved, restored, and used for deterministic code generation.
 
 ### The Tri-Canvas Sync
 The application maintains three specialized stores that interact through a shared ID namespace:
@@ -65,7 +65,7 @@ The Routing Engine is where the application logic is "wired."
 
 ## 📦 Code Generation Engine
 
-The core value of Studio Editor lies in its ability to transform visual state into clean, human-readable code.
+The core value of RanDoseru lies in its ability to transform visual state into clean, human-readable code.
 
 ### Cross-Service Resolution
 The generator doesn't just produce files; it understands dependencies. If a button is wired to a specific microservice, the generator:
@@ -92,7 +92,7 @@ npm install
 ```
 
 ### Key Commands
-- `npm run dev`: Starts the Studio Editor in development mode.
+- `npm run dev`: Starts the RanDoseru in development mode.
 - `npm run build`: Creates an optimized production build of the editor.
 - `npm run lint`: Runs ESLint for code quality checks.
 

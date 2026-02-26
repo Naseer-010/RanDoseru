@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Visual Editor - Database-Ready Website Builder",
+  title: "RanDoseru - Database-Ready Website Builder",
   description: "A Next.js 14 visual website editor with fully serializable JSON state for PostgreSQL storage",
 };
 
