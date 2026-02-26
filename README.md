@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Studio Editor 🚀
 
-## Getting Started
+**The Database-Ready Visual Website Builder**
 
-First, run the development server:
+Studio Editor is a sophisticated, multi-layered visual development platform built with Next.js 16. It enables developers and designers to build full-stack applications with a live frontend canvas, a service-oriented backend builder, and a visual routing engine that wires everything together.
 
+---
+
+## 🏗️ Architectural Deep Dive
+
+Studio Editor is built on a **Serializable State Tree** architecture. Every action across all three canvases is captured in a unified JSON structure managed by **Zustand**. This ensures that the entire project state—from the position of a button to the database schema of a microservice—can be saved, restored, and used for deterministic code generation.
+
+### The Tri-Canvas Sync
+The application maintains three specialized stores that interact through a shared ID namespace:
+- **`editorStore`**: Houses the frontend component tree, pages, and global elements.
+- **`backendStore`**: Manages the microservice containers, backend blocks, and database models.
+- **`routingStore`**: The connective tissue that maps frontend "Output" ports to backend/page "Input" ports.
+
+---
+
+## 🎨 Frontend Subsystem
+
+The frontend editor is a high-fidelity "What You See Is What You Get" (WYSIWYG) environment.
+
+### Component Library
+- **Layout**: Sections, Containers, Multi-column Grids, Flex Stacks, Spacers, and Dividers.
+- **Typography**: Dynamic Titles, Paragraphs, and Text blocks with rich inline editing.
+- **Media**: Optimized Image and Video components.
+- **Interactive**: Buttons, Forms, Input fields, and specialized UI components like **Accordions**, **Tabs**, and **Repeaters**.
+- **Social**: Integrated Social Bars and Navigation Menus.
+
+### Global Elements System
+Elements tagged as "Global" (like Headers and Footers) are rendered across all pages. The editor manages these in a separate registry within the `editorStore`, ensuring consistency across the entire site without duplication.
+
+---
+
+## ⚙️ Backend Subsystem
+
+The Backend Builder allows for visual microservice orchestration.
+
+### Backend Blocks
+- **Endpoints**: RESTful blocks (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`) with configurable routes and response logic.
+- **Data Models**: Mongoose-based schema builders for MongoDB.
+- **Middleware**: Drag-and-drop security and utility blocks including **JWT Auth**, **CORS**, **Rate Limiting**, and **Request Logging**.
+- **Control Flow**: Logic blocks for **If/Else** conditions, **Loops**, and **Try-Catch** error handling.
+
+### Prebuilt Templates
+Jumpstart development with production-ready templates:
+- **Auth System**: Complete JWT-based registration and login flow.
+- **CRUD API**: Standard Create-Read-Update-Delete patterns for any resource.
+- **Chat System**: Real-time messaging architecture.
+
+---
+
+## � Routing & Interconnectivity
+
+The Routing Engine is where the application logic is "wired."
+
+### Visual Wiring Logic
+- **Output Ports**: Frontend elements expose events (e.g., `onClick`, `onSubmit`) as signal generators.
+- **Input Ports**: Backend endpoints and Pages expose themselves as signal receivers.
+- **Ports & Wires**: Connections are stored as edge definitions in the `routingStore`. When generating code, the `resolveConnections` engine traces these paths to inject the correct API calls or navigation logic.
+
+---
+
+## 📦 Code Generation Engine
+
+The core value of Studio Editor lies in its ability to transform visual state into clean, human-readable code.
+
+### Cross-Service Resolution
+The generator doesn't just produce files; it understands dependencies. If a button is wired to a specific microservice, the generator:
+1.  Creates an `api.js` helper in the frontend.
+2.  Configures the correct `BASE_URL` and `PORT` based on the backend service definition.
+3.  Injects asynchronous `fetch` logic into the React component's event handler.
+
+### Export Format
+Projects are bundled into a **Full-Stack ZIP** via `JSZip`, containing:
+- **`/frontend`**: A complete Next.js/React project with Tailwind-ready CSS.
+- **`/backend`**: Multiple Node.js/Express services, each with its own `Dockerfile` and shared `docker-compose.yml`.
+
+---
+
+## 🚀 Getting Started & Development
+
+### Prerequisites
+- **Node.js**: v18.0.0 or higher
+- **Package Manager**: npm, pnpm, or yarn
+
+### Installation
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Key Commands
+- `npm run dev`: Starts the Studio Editor in development mode.
+- `npm run build`: Creates an optimized production build of the editor.
+- `npm run lint`: Runs ESLint for code quality checks.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Contributing
+We use **Zustand selectors** for performance optimization and **Framer Motion** for all canvas animations. Please ensure all new components are fully typed and follow the existing directory structure in `src/components`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*Generated with ❤️ by the Studio Editor Team.*
