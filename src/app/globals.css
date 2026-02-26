@@ -4841,6 +4841,178 @@ body {
   display: block;
 }
 
+/* Section labels in sidebar */
+.code-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+
+.code-file-indented {
+  padding-left: 20px !important;
+}
+
+/* File viewer */
+.code-file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.code-file-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.code-file-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.code-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.code-copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+  border-color: var(--accent);
+}
+
+/* Syntax highlighted code block */
+.sh-code-block {
+  display: flex;
+  flex: 1;
+  overflow: auto;
+  background: #0d1117;
+}
+
+.sh-line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 0;
+  text-align: right;
+  user-select: none;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sh-line-num {
+  display: block;
+  padding: 0 12px 0 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.18);
+}
+
+.sh-code {
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #e6edf3;
+  white-space: pre;
+  margin: 0;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.sh-code code {
+  display: block;
+}
+
+/* Syntax token colors (GitHub Dark theme inspired) */
+.sh-kw {
+  color: #ff7b72;
+}
+
+.sh-str {
+  color: #a5d6ff;
+}
+
+.sh-comment {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.sh-num {
+  color: #79c0ff;
+}
+
+.sh-bool {
+  color: #79c0ff;
+}
+
+.sh-null {
+  color: #79c0ff;
+  font-style: italic;
+}
+
+.sh-tag {
+  color: #7ee787;
+}
+
+.sh-prop {
+  color: #d2a8ff;
+}
+
+.sh-sel {
+  color: #7ee787;
+  font-weight: 600;
+}
+
+.sh-key {
+  color: #7ee787;
+}
+
+.sh-heading {
+  color: #d2a8ff;
+  font-weight: 700;
+}
+
+.sh-bullet {
+  color: #f0883e;
+}
+
+.sh-inline-code {
+  color: #e6edf3;
+  background: rgba(110, 118, 129, 0.2);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.sh-bold {
+  font-weight: 700;
+  color: #e6edf3;
+}
+
 /* Frontend Code Panel */
 .code-panel {
   display: flex;
@@ -5054,6 +5226,8 @@ body {
   transition: box-shadow 0.15s;
   cursor: move;
   min-height: 80px;
+  display: flex;
+  flex-direction: column;
 }
 
 .routing-node:hover {
@@ -5140,7 +5314,9 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
+  flex: 1;
   min-height: 40px;
+  overflow: visible;
 }
 
 .routing-ports-column {

@@ -138,9 +138,9 @@ const RoutingNodeComponent: React.FC<Props> = ({ node }) => {
         }
     };
 
-    // Compute node height based on max port count
+    // Compute node height based on max port count — use generous sizing for services
     const maxPorts = Math.max(inputPorts.length, outputPorts.length, 1);
-    const computedHeight = Math.max(node.height, 80 + maxPorts * 28);
+    const computedHeight = Math.max(node.height, 90 + maxPorts * 32);
 
     return (
         <div

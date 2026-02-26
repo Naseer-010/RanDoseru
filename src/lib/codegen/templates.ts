@@ -42,6 +42,8 @@ const PORT = process.env.PORT || ${port};
 // ─── Built-in Middleware ───
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cors());
+app.use(helmet());
 app.use(morgan('dev'));
 
 ${middlewareSetup}
@@ -134,9 +136,9 @@ ${routes}
 `.trim();
 
 export const ENV_TEMPLATE = (vars: Record<string, string>) => {
-    return Object.entries(vars)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
+  return Object.entries(vars)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
 };
 
 export const DOCKERFILE_TEMPLATE = (port: number) => `

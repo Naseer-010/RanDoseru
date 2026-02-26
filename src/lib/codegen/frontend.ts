@@ -1,4 +1,5 @@
 import { ElementNode, Page } from "@/types";
+import { ElementWiring, EndpointTarget, PageTarget } from "./connectionResolver";
 
 type FrontendCodeResult = {
     files: Record<string, string>;
@@ -36,11 +37,41 @@ const textContent = (el: ElementNode, fallback: string): string => {
 
 const classNameFor = (el: ElementNode) => `el-${el.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
+// ─── Wiring helper: generate event handler attribute for a wired element ───
+function wiringAttr(
+    el: ElementNode,
+    wiringMap: Map<string, ElementWiring>,
+    mode: "html" | "jsx"
+): string {
+    const wiring = wiringMap.get(el.id);
+    if (!wiring || mode === "html") return "";
+
+    const t = wiring.target;
+
+    if (t.kind === "page") {
+        const pt = t as PageTarget;
+        return ` onClick={() => { window.location.href = "${pt.pageRoute}"; }}`;
+    }
+
+    if (t.kind === "endpoint") {
+        const ep = t as EndpointTarget;
+        if (el.type === "form") {
+            return ` onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.target); const body = Object.fromEntries(fd.entries()); try { const res = await apiFetch("${ep.route}", { method: "${ep.method}", body: JSON.stringify(body) }); console.log("Response:", res); alert("Success!"); } catch (err) { console.error(err); alert("Error: " + err.message); } }}`;
+        }
+        // Button / image / other click handler
+        const bodyArg = ep.method === "GET" || ep.method === "DELETE" ? "" : ', body: JSON.stringify({})';
+        return ` onClick={async () => { try { const res = await apiFetch("${ep.route}", { method: "${ep.method}"${bodyArg} }); console.log("Response:", res); } catch (err) { console.error(err); } }}`;
+    }
+
+    return "";
+}
+
 const renderElement = (
     el: ElementNode,
     isRoot: boolean,
     cssOut: Set<string>,
-    mode: "html" | "jsx"
+    mode: "html" | "jsx",
+    wiringMap: Map<string, ElementWiring> = new Map()
 ): string => {
     const className = classNameFor(el);
     const tag = (() => {
@@ -124,18 +155,18 @@ const renderElement = (
     const css = cssFromStyles(mergedStyles);
     cssOut.add(`.${className} { ${css} }`);
 
-    const children = (el.children || []).map((c) => renderElement(c, false, cssOut, mode)).join("");
+    const children = (el.children || []).map((c) => renderElement(c, false, cssOut, mode, wiringMap)).join("");
     const clsAttr = mode === "jsx" ? "className" : "class";
 
     switch (el.type) {
         case "title":
         case "text":
         case "paragraph":
-            return `<${tag} ${clsAttr}="${className}">${textContent(el, el.type === "title" ? "Heading" : "Text")}</${tag}>`;
+            return `<${tag} ${clsAttr}="${className}"${wiringAttr(el, wiringMap, mode)}>${textContent(el, el.type === "title" ? "Heading" : "Text")}</${tag}>`;
         case "button":
-            return `<button ${clsAttr}="${className}">${textContent(el, "Button")}</button>`;
+            return `<button ${clsAttr}="${className}"${wiringAttr(el, wiringMap, mode)}>${textContent(el, "Button")}</button>`;
         case "image":
-            return `<img ${clsAttr}="${className}" src="${String(el.props?.src || "")}" alt="${String(el.props?.alt || "")}" />`;
+            return `<img ${clsAttr}="${className}" src="${String(el.props?.src || "")}" alt="${String(el.props?.alt || "")}"${wiringAttr(el, wiringMap, mode)} />`;
         case "video":
             return `<video ${clsAttr}="${className}" ${el.props?.autoplay ? "autoplay" : ""} ${el.props?.loop ? "loop" : ""} ${el.props?.muted ? "muted" : ""} controls></video>`;
         case "menu": {
@@ -168,6 +199,11 @@ const renderElement = (
             const htmlMethod = requestMethod === "GET" ? "get" : "post";
             const requestUrl = String(el.props?.requestUrl || "").trim();
             const actionAttr = requestUrl ? ` action="${requestUrl}"` : "";
+            const formWiring = wiringAttr(el, wiringMap, mode);
+            // If form has a wiring, the onSubmit prevents default and uses fetch
+            if (formWiring) {
+                return `<form ${clsAttr}="${className}"${formWiring}>${children}</form>`;
+            }
             return `<form ${clsAttr}="${className}" method="${htmlMethod}" data-request-method="${requestMethod}"${actionAttr}>${children}</form>`;
         }
         case "input": {
@@ -196,23 +232,49 @@ export function generateFrontendProject(
     elements: ElementNode[],
     globalElements: ElementNode[],
     canvasSettings: { backgroundColor: string; width: number; height: number },
-    page?: Page
+    page?: Page,
+    allPages?: Page[],
+    wirings?: ElementWiring[]
 ): FrontendCodeResult {
+    // Build wiring map keyed by elementId
+    const wiringMap = new Map<string, ElementWiring>();
+    if (wirings) {
+        for (const w of wirings) {
+            wiringMap.set(w.elementId, w);
+        }
+    }
     const cssParts = new Set<string>();
 
-    const safeElements = Array.isArray(elements) ? elements : [];
     const safeGlobal = Array.isArray(globalElements) ? globalElements : [];
+
+    // Collect elements from ALL pages if available, otherwise use the active elements
+    let allElements: ElementNode[] = [];
+    if (allPages && allPages.length > 0) {
+        for (const p of allPages) {
+            if (Array.isArray(p.elements)) {
+                allElements.push(...p.elements);
+            }
+        }
+    }
+    // Also include the current active elements (they may not be saved to the page yet)
+    const safeElements = Array.isArray(elements) ? elements : [];
+    if (safeElements.length > 0) {
+        // Deduplicate: remove any page elements that share IDs with active elements
+        const activeIds = new Set(safeElements.map(el => el.id));
+        allElements = allElements.filter(el => !activeIds.has(el.id));
+        allElements.push(...safeElements);
+    }
 
     const htmlParts: string[] = [];
     const jsxParts: string[] = [];
 
     safeGlobal.forEach((el) => {
         htmlParts.push(renderElement(el, false, cssParts, "html"));
-        jsxParts.push(renderElement(el, false, cssParts, "jsx"));
+        jsxParts.push(renderElement(el, false, cssParts, "jsx", wiringMap));
     });
-    safeElements.forEach((el) => {
+    allElements.forEach((el) => {
         htmlParts.push(renderElement(el, true, cssParts, "html"));
-        jsxParts.push(renderElement(el, true, cssParts, "jsx"));
+        jsxParts.push(renderElement(el, true, cssParts, "jsx", wiringMap));
     });
 
     const canvasWidth = Math.max(320, Number(canvasSettings.width) || 1280);
@@ -245,9 +307,13 @@ hr { border: none; }
   <body style="background:${bg};">${body}</body>
 </html>`;
 
+    // Determine if we need the API client import
+    const hasEndpointWirings = wirings && wirings.some((w) => w.target.kind === "endpoint");
+    const apiImport = hasEndpointWirings ? 'import { apiFetch } from "./api.js";\n' : "";
+
     const appJsx = `
 import "./styles.css";
-
+${apiImport}
 export default function App() {
   return (
     <div className="page">
@@ -258,25 +324,31 @@ export default function App() {
 `.trim();
 
     const files: Record<string, string> = {
-        "package.json": `{
-  "name": "frontend-project",
-  "private": true,
-  "version": "0.0.1",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "vite": "^5.0.0",
-    "@vitejs/plugin-react": "^4.2.0"
-  }
-}`,
+        "package.json": JSON.stringify({
+            name: "frontend-project",
+            private: true,
+            version: "0.0.1",
+            type: "module",
+            scripts: {
+                dev: "vite",
+                build: "vite build",
+                preview: "vite preview",
+            },
+            dependencies: {
+                react: "^18.2.0",
+                "react-dom": "^18.2.0",
+            },
+            devDependencies: {
+                vite: "^5.0.0",
+                "@vitejs/plugin-react": "^4.2.0",
+            },
+        }, null, 2),
+        "vite.config.js": `import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+});`,
         "index.html": `<!doctype html>
 <html>
   <head>
@@ -300,11 +372,49 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );`,
         "src/App.jsx": appJsx,
         "src/styles.css": css,
-        "README.md": `# Frontend Project
-
-Generated from the visual editor.
-`,
+        "README.md": `# Frontend Project\n\nGenerated from the visual editor.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n`,
     };
+
+    // Generate API client helper if any endpoint wirings exist
+    if (hasEndpointWirings && wirings) {
+        // Collect unique service base URLs
+        const servicePorts = new Set<number>();
+        for (const w of wirings) {
+            if (w.target.kind === "endpoint") {
+                servicePorts.add((w.target as EndpointTarget).servicePort);
+            }
+        }
+        const defaultPort = servicePorts.values().next().value || 3001;
+
+        files["src/api.js"] = `// ═══════════════════════════════════════
+// API Client — Auto-generated from routing
+// ═══════════════════════════════════════
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:${defaultPort}";
+
+/**
+ * Make an API request to the backend.
+ * @param {string} path - API path, e.g. "/api/users"
+ * @param {RequestInit} options - fetch options (method, body, headers, etc.)
+ * @returns {Promise<any>} parsed JSON response
+ */
+export async function apiFetch(path, options = {}) {
+  const url = \`\${API_BASE}\${path}\`;
+  const res = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || err.message || \`Request failed: \${res.status}\`);
+  }
+  return res.json();
+}
+`;
+    }
 
     return { files, previewHtml };
 }

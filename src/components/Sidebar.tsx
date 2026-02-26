@@ -8,6 +8,7 @@ import { ElementType, CONTAINER_TYPES } from "@/types";
 import { BACKEND_SIDEBAR_CATEGORIES, BackendBlockType } from "@/types/backend";
 import { generateProject } from "@/lib/codegen";
 import { generateFrontendProject } from "@/lib/codegen/frontend";
+import { resolveConnections } from "@/lib/codegen/connectionResolver";
 import { exportAsZip } from "@/lib/codegen/exporter";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -469,7 +470,18 @@ const Sidebar: React.FC = () => {
                                     className="code-panel-btn"
                                     onClick={() => {
                                         const activePage = pages.find((p) => p.id === activePageId);
-                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage);
+                                        const routingState = useRoutingStore.getState();
+                                        const beState = useBackendStore.getState();
+                                        const wirings = resolveConnections(
+                                            routingState.nodes,
+                                            routingState.connections,
+                                            pages,
+                                            elements,
+                                            activePageId,
+                                            beState.services,
+                                            routingState.getPortsForNode
+                                        );
+                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, wirings);
                                         setFrontendGeneratedCode(files);
                                         setFrontendCodePreviewOpen(true);
                                     }}
@@ -480,11 +492,30 @@ const Sidebar: React.FC = () => {
                                     className="code-panel-btn secondary"
                                     onClick={async () => {
                                         const activePage = pages.find((p) => p.id === activePageId);
-                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage);
-                                        await exportAsZip(files, "frontend-project");
+                                        const routingState = useRoutingStore.getState();
+                                        const beState = useBackendStore.getState();
+                                        const wirings = resolveConnections(
+                                            routingState.nodes,
+                                            routingState.connections,
+                                            pages,
+                                            elements,
+                                            activePageId,
+                                            beState.services,
+                                            routingState.getPortsForNode
+                                        );
+                                        const { files: feFiles } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, wirings);
+                                        const beFiles = beState.services.length > 0 ? generateProject(beState.services, beState.connections) : {};
+                                        const allFiles: Record<string, string> = {};
+                                        for (const [path, content] of Object.entries(feFiles)) {
+                                            allFiles[`frontend/${path}`] = content;
+                                        }
+                                        for (const [path, content] of Object.entries(beFiles)) {
+                                            allFiles[`backend/${path}`] = content;
+                                        }
+                                        await exportAsZip(allFiles, "full-project");
                                     }}
                                 >
-                                    Export ZIP
+                                    Export Full ZIP
                                 </button>
                             </div>
                         </div>

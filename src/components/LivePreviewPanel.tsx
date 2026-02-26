@@ -169,9 +169,14 @@ const LiveElement: React.FC<LiveElementProps> = ({
             case "form":
                 return (
                     <form
+                        noValidate={false}
                         onSubmit={(e) => {
                             e.preventDefault();
-                            // Find the submit button inside the form
+                            // Use HTML5 validation
+                            const formEl = e.currentTarget;
+                            if (!formEl.reportValidity()) {
+                                return; // Browser shows native validation UI
+                            }
                             const submitBtn = findActionableChild(element);
                             if (submitBtn) {
                                 onAction(submitBtn.id, formData);
@@ -189,10 +194,22 @@ const LiveElement: React.FC<LiveElementProps> = ({
             case "input": {
                 const inputType = String(element.props.inputType || "text");
                 const name = String(element.props.name || element.id);
+                const isRequired = !!element.props.required;
+                const maxLength = Number(element.props.maxLength);
+                const minLength = Number(element.props.minLength);
+                // Auto-pattern for email
+                const pattern = inputType === "email"
+                    ? String(element.props.pattern || "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}")
+                    : element.props.pattern ? String(element.props.pattern) : undefined;
                 const commonProps = {
                     name,
                     placeholder: String(element.props.placeholder || ""),
                     value: formData[name] || "",
+                    required: isRequired,
+                    pattern,
+                    minLength: Number.isFinite(minLength) && minLength > 0 ? minLength : undefined,
+                    maxLength: Number.isFinite(maxLength) && maxLength > 0 ? maxLength : undefined,
+                    title: inputType === "email" ? "Please enter a valid email address" : undefined,
                     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
                         setFormData((prev) => ({ ...prev, [name]: e.target.value }));
                     },
