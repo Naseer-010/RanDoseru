@@ -101,4 +101,4 @@ We use **Zustand selectors** for performance optimization and **Framer Motion** 
 
 ---
 
-*Generated with ❤️ by the Studio Editor Team.*
+*Generated with ❤️ by the RanDoseru Team.*
