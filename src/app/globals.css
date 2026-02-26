@@ -5682,6 +5682,10 @@ body {
   z-index: 999;
 }
 
+.lp-element {
+  box-sizing: border-box;
+}
+
 .live-preview-header {
   display: flex;
   align-items: center;

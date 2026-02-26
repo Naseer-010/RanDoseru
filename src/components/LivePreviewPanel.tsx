@@ -250,7 +250,7 @@ const LiveElement: React.FC<LiveElementProps> = ({
         <div
             data-element-id={element.id}
             data-element-type={element.type}
-            className={`element-wrapper ${hasRoute ? "live-routed-element" : ""}`}
+            className={`lp-element ${hasRoute ? "live-routed-element" : ""}`}
             style={mergedStyles}
         >
             {renderContent()}

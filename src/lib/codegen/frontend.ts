@@ -45,7 +45,8 @@ const renderElement = (
     const className = classNameFor(el);
     const tag = (() => {
         if (el.type === "section") return "section";
-        if (el.type === "container" || el.type === "stack" || el.type === "columns" || el.type === "form") return "div";
+        if (el.type === "container" || el.type === "stack" || el.type === "columns") return "div";
+        if (el.type === "form") return "form";
         if (el.type === "title") {
             const lvl = Math.min(Math.max(Number(el.props?.level) || 2, 1), 6);
             return `h${lvl}`;
@@ -93,6 +94,30 @@ const renderElement = (
         baseStyles.display = baseStyles.display || "flex";
         baseStyles.flexDirection = baseStyles.flexDirection || "column";
         baseStyles.gap = baseStyles.gap || SAFE_UNIT(el.styles?.gap ?? "12px", "0.75rem") || "0.75rem";
+    }
+    if (el.type === "form") {
+        baseStyles.display = "flex";
+        baseStyles.flexDirection = "column";
+        baseStyles.gap = SAFE_UNIT(el.styles?.gap ?? "8px", "0.5rem") || "0.5rem";
+    }
+    if (el.type === "input") {
+        baseStyles.width = baseStyles.width || "100%";
+        baseStyles.padding = el.styles?.padding || "12px 16px";
+        baseStyles.border = el.styles?.border || "1px solid #d1d5db";
+        baseStyles.borderRadius = el.styles?.borderRadius || "8px";
+        baseStyles.fontSize = el.styles?.fontSize || "14px";
+        baseStyles.backgroundColor = el.styles?.backgroundColor || "#ffffff";
+        baseStyles.color = "#1a1a2e";
+    }
+    if (el.type === "button") {
+        baseStyles.display = "inline-flex";
+        baseStyles.alignItems = "center";
+        baseStyles.justifyContent = "center";
+        baseStyles.border = el.styles?.border || "none";
+        baseStyles.padding = el.styles?.padding || "12px 24px";
+        baseStyles.borderRadius = el.styles?.borderRadius || "6px";
+        baseStyles.fontSize = el.styles?.fontSize || "14px";
+        baseStyles.fontWeight = el.styles?.fontWeight || "500";
     }
 
     const mergedStyles = { ...baseStyles, ...(el.styles || {}) };
@@ -195,11 +220,15 @@ export function generateFrontendProject(
     const bg = String(canvasSettings.backgroundColor || "#ffffff");
 
     const baseCss = `
-* { box-sizing: border-box; }
-body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #0f1115; color: #0f172a; }
-.page { position: relative; width: min(100%, ${canvasWidth}px); min-height: ${canvasHeight}px; margin: 2rem auto; padding: 2rem; background: ${bg}; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif; background: ${bg}; color: #0f172a; }
+.page { position: relative; width: min(100%, ${canvasWidth}px); min-height: ${canvasHeight}px; margin: 0 auto; padding: 2rem; background: ${bg}; overflow: hidden; }
 img { max-width: 100%; height: auto; display: block; }
-button { cursor: pointer; }
+button { cursor: pointer; font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+input:focus, textarea:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+hr { border: none; }
 `;
 
     const css = `${baseCss}\n${Array.from(cssParts).join("\n")}`;
@@ -213,7 +242,7 @@ button { cursor: pointer; }
     <title>${page?.title || "Preview"}</title>
     <style>${css}</style>
   </head>
-  <body>${body}</body>
+  <body style="background:${bg};">${body}</body>
 </html>`;
 
     const appJsx = `

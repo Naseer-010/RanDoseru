@@ -37,7 +37,7 @@ const FrontendCodePreviewPanel: React.FC = () => {
             <div className="code-preview-panel">
                 <div className="code-preview-header">
                     <FileCode2 size={16} />
-                    <h3>Frontend Code</h3>
+                    <h3>FUlly Functional Code</h3>
                     <span className="code-file-count">{fileList.length} files</span>
                     <button
                         className="code-preview-close"
