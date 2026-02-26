@@ -9,7 +9,7 @@ import DebugPanel from "@/components/DebugPanel";
 import FloatingToolbar from "@/components/FloatingToolbar";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import KeyboardShortcuts from "@/components/KeyboardShortcuts";
-import PreviewPanel from "@/components/PreviewPanel";
+import LivePreviewPanel from "@/components/LivePreviewPanel";
 import BackendCanvas from "@/components/backend/BackendCanvas";
 import BackendInspector from "@/components/backend/BackendInspector";
 import BackendHierarchy from "@/components/backend/BackendHierarchy";
@@ -182,7 +182,7 @@ export default function Home() {
           <DebugPanel />
         </div>
 
-        {isPreviewOpen && <PreviewPanel onClose={() => setIsPreviewOpen(false)} />}
+        {isPreviewOpen && <LivePreviewPanel onClose={() => setIsPreviewOpen(false)} />}
         {codePreviewOpen && <CodePreviewPanel />}
         {frontendCodePreviewOpen && <FrontendCodePreviewPanel />}
       </div>
