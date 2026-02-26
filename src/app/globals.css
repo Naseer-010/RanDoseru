@@ -5673,3 +5673,291 @@ body {
   color: var(--text-1);
   border-color: var(--accent);
 }
+
+/* ═══════════════════════════════════════════════════════
+   Live Preview — Interactive routing preview styles
+   ═══════════════════════════════════════════════════════ */
+
+.live-preview {
+  z-index: 999;
+}
+
+.live-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ─── Navigation Bar ─── */
+
+.live-preview-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.live-nav-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.live-nav-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-1);
+  border-color: var(--accent);
+}
+
+.live-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.live-nav-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-root);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--text-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.live-nav-url svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.live-nav-url span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Live Indicator ─── */
+
+.live-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-preview-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 10px;
+  font-size: 10px;
+  color: #34d399;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.live-preview-indicator svg {
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ─── Page Tabs ─── */
+
+.live-preview-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.live-tab {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.live-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.live-tab-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: rgba(139, 92, 246, 0.3);
+  font-weight: 600;
+}
+
+/* ─── Interactive Elements ─── */
+
+.live-preview-btn {
+  transition: all 0.15s ease !important;
+}
+
+.live-preview-btn:hover {
+  opacity: 0.85;
+  transform: scale(0.98);
+}
+
+.live-preview-btn-routed {
+  position: relative;
+}
+
+.live-preview-btn-routed::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid rgba(139, 92, 246, 0.3);
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.live-preview-btn-routed:hover::after {
+  opacity: 1;
+}
+
+.live-routed-element {
+  position: relative;
+}
+
+/* ─── Toast Notifications ─── */
+
+.live-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.live-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  backdrop-filter: blur(12px);
+  background: rgba(20, 22, 30, 0.92);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  font-size: 12px;
+  min-width: 200px;
+  max-width: 360px;
+  pointer-events: auto;
+  animation: toast-slide-in 0.3s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.live-toast-success {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.live-toast-success svg {
+  color: #34d399;
+}
+
+.live-toast-error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.live-toast-error svg {
+  color: var(--red);
+}
+
+.live-toast-info {
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.live-toast-info svg {
+  color: var(--accent);
+}
+
+.live-toast svg {
+  flex-shrink: 0;
+}
+
+.live-toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.live-toast-msg {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-toast-detail {
+  font-size: 10px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Form inputs in live preview ─── */
+
+.live-preview input:focus,
+.live-preview textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+  outline: none;
+}
+
+.live-preview input::placeholder,
+.live-preview textarea::placeholder {
+  color: #9ca3af;
+}
