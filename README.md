@@ -82,10 +82,10 @@ Projects are bundled into a **Full-Stack ZIP** via `JSZip`, containing:
 
 ## Screenshots
 
-| Gameplay | Gameplay | Gameplay | Gameplay |
+|  |  |  |  |
 |---------|----------|----------|----------|
-| <img src="Screenshots/Screenshot%20(1).png" width="250"/> | <img src="Screenshots/Screenshot%20(2).png" width="250"/> | <img src="Screenshots/Screenshot%20(3).png" width="250"/> | <img src="Screenshots/Screenshot%20(4).png" width="250"/> |
-| <img src="Screenshots/Screenshot%20(5).png" width="250"/> | <img src="Screenshots/Screenshot%20(6).png" width="250"/> | <img src="Screenshots/Screenshot%20(7).png" width="250"/> | <img src="Screenshots/Screenshot%20(8).png" width="250"/> |
+| <img src="Screenshots/Screenshot%20(1).jpeg" width="250"/> | <img src="Screenshots/Screenshot%20(2).jpeg" width="250"/> | <img src="Screenshots/Screenshot%20(3).jpeg" width="250"/> | <img src="Screenshots/Screenshot%20(4).jpeg" width="250"/> |
+|  |  |  |  |
 
 
 ## 🚀 Getting Started & Development
