@@ -8,7 +8,7 @@ import { ElementType, CONTAINER_TYPES } from "@/types";
 import { BACKEND_SIDEBAR_CATEGORIES, BackendBlockType } from "@/types/backend";
 import { generateProject } from "@/lib/codegen";
 import { generateFrontendProject } from "@/lib/codegen/frontend";
-import { resolveConnections } from "@/lib/codegen/connectionResolver";
+import { resolveGraph } from "@/lib/graphResolver";
 import { exportAsZip } from "@/lib/codegen/exporter";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -472,16 +472,15 @@ const Sidebar: React.FC = () => {
                                         const activePage = pages.find((p) => p.id === activePageId);
                                         const routingState = useRoutingStore.getState();
                                         const beState = useBackendStore.getState();
-                                        const wirings = resolveConnections(
-                                            routingState.nodes,
-                                            routingState.connections,
+                                        const flowGraph = resolveGraph({
+                                            nodes: routingState.nodes,
+                                            connections: routingState.connections,
                                             pages,
-                                            elements,
                                             activePageId,
-                                            beState.services,
-                                            routingState.getPortsForNode
-                                        );
-                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, wirings);
+                                            activeElements: elements,
+                                            services: beState.services,
+                                        });
+                                        const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, undefined, flowGraph);
                                         setFrontendGeneratedCode(files);
                                         setFrontendCodePreviewOpen(true);
                                     }}
@@ -494,17 +493,16 @@ const Sidebar: React.FC = () => {
                                         const activePage = pages.find((p) => p.id === activePageId);
                                         const routingState = useRoutingStore.getState();
                                         const beState = useBackendStore.getState();
-                                        const wirings = resolveConnections(
-                                            routingState.nodes,
-                                            routingState.connections,
+                                        const flowGraph = resolveGraph({
+                                            nodes: routingState.nodes,
+                                            connections: routingState.connections,
                                             pages,
-                                            elements,
                                             activePageId,
-                                            beState.services,
-                                            routingState.getPortsForNode
-                                        );
-                                        const { files: feFiles } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, wirings);
-                                        const beFiles = beState.services.length > 0 ? generateProject(beState.services, beState.connections) : {};
+                                            activeElements: elements,
+                                            services: beState.services,
+                                        });
+                                        const { files: feFiles } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, undefined, flowGraph);
+                                        const beFiles = beState.services.length > 0 ? generateProject(beState.services, beState.connections, flowGraph) : {};
                                         const allFiles: Record<string, string> = {};
                                         for (const [path, content] of Object.entries(feFiles)) {
                                             allFiles[`frontend/${path}`] = content;

@@ -1,109 +1,53 @@
 // ═══════════════════════════════════════════════════
-// Routing Engine — Resolves connections at runtime
+// Routing Engine — Runtime Route Resolution
 // ═══════════════════════════════════════════════════
 //
-// Given the routing canvas connections and the current form/action context,
-// this engine determines:
-//   1. What service block to invoke
-//   2. What to do with the response (navigate to page, pass data, etc.)
+// This module is now a thin wrapper around the unified graph resolver (graphResolver.ts).
+// It converts FlowGraph → ResolvedRoute for backward compatibility with the runtime
+// preview system, while guaranteeing that preview and codegen use the same logic.
+//
+// ── MIGRATION NOTE ──
+// resolveRouteForElement() and resolveAllRoutes() now delegate to resolveGraph().
+// simulateServiceBlock() remains as a runtime-only simulation helper.
 //
 
 import { useRoutingStore } from "@/store/routingStore";
 import { useEditorStore } from "@/store/editorStore";
 import { useBackendStore } from "@/store/backendStore";
-import { RoutingConnection, RoutingNode, NodePort } from "@/types/routing";
+import { RoutingConnection } from "@/types/routing";
 import { BackendBlock, ServiceContainer } from "@/types/backend";
+import { resolveGraph, GraphResolverInput } from "@/lib/graphResolver";
+import { Flow, FlowGraph, ApiCallStep } from "@/types/ir";
 
-// ─── Route Resolution ───
+// ─── Route Resolution (legacy shape, kept for preview consumers) ───
 
 export interface ResolvedRoute {
-    // Connection chain: element → service → target page
     sourceElementId: string;
     sourcePageId: string;
-    // Intermediate service (may be null for page→page)
     service?: ServiceContainer;
     block?: BackendBlock;
-    // Target navigation
     targetPageId?: string;
     targetPageTitle?: string;
-    // All connections in the chain
     connections: RoutingConnection[];
 }
 
 /**
  * For a given actionable element on a given page, trace the routing connections
  * to find what happens when the element is activated (click/submit).
+ *
+ * Delegates to resolveGraph() and converts the matching Flow → ResolvedRoute.
  */
 export function resolveRouteForElement(
     elementId: string,
     pageId: string
 ): ResolvedRoute | null {
-    const routingState = useRoutingStore.getState();
-    const editorState = useEditorStore.getState();
-    const backendState = useBackendStore.getState();
+    const graph = buildGraphFromStores();
+    const flow = graph.flows.find(
+        (f) => f.trigger.elementId === elementId && f.trigger.pageId === pageId
+    );
+    if (!flow) return null;
 
-    const { nodes, connections } = routingState;
-
-    // 1. Find the page node on the canvas
-    const pageNode = nodes.find((n) => n.type === "page" && n.refId === pageId);
-    if (!pageNode) return null;
-
-    // 2. Find the output port for this element
-    const outputPortId = `${pageNode.id}:out:${elementId}`;
-
-    // 3. Find connection from this port
-    const outConn = connections.find((c) => c.fromPortId === outputPortId);
-    if (!outConn) return null;
-
-    const result: ResolvedRoute = {
-        sourceElementId: elementId,
-        sourcePageId: pageId,
-        connections: [outConn],
-    };
-
-    // 4. Determine what the element connects to
-    const targetNode = nodes.find((n) => n.id === outConn.toNodeId);
-    if (!targetNode) return null;
-
-    if (targetNode.type === "page") {
-        // Direct page→page navigation
-        const page = editorState.pages.find((p) => p.id === targetNode.refId);
-        result.targetPageId = targetNode.refId;
-        result.targetPageTitle = page?.title;
-        return result;
-    }
-
-    if (targetNode.type === "service") {
-        // Element → Service block
-        const service = backendState.services.find((s) => s.id === targetNode.refId);
-        if (service) {
-            result.service = service;
-            // Find which block the port targets
-            const portIdParts = outConn.toPortId.split(":");
-            const blockId = portIdParts[portIdParts.length - 1];
-            const block = service.blocks.find((b) => b.id === blockId);
-            result.block = block;
-
-            // 5. Now check if the service has an outgoing connection to a page
-            //    (response → page navigation)
-            const serviceOutputPorts = connections.filter(
-                (c) => c.fromNodeId === targetNode.id
-            );
-            for (const serviceConn of serviceOutputPorts) {
-                const destNode = nodes.find((n) => n.id === serviceConn.toNodeId);
-                if (destNode?.type === "page") {
-                    const page = editorState.pages.find((p) => p.id === destNode.refId);
-                    result.targetPageId = destNode.refId;
-                    result.targetPageTitle = page?.title;
-                    result.connections.push(serviceConn);
-                    break;
-                }
-            }
-        }
-        return result;
-    }
-
-    return null;
+    return flowToResolvedRoute(flow, pageId);
 }
 
 /**
@@ -111,34 +55,96 @@ export function resolveRouteForElement(
  * Returns a map: elementId → ResolvedRoute
  */
 export function resolveAllRoutes(): Map<string, ResolvedRoute> {
+    const graph = buildGraphFromStores();
     const routeMap = new Map<string, ResolvedRoute>();
-    const routingState = useRoutingStore.getState();
-    const { nodes, connections } = routingState;
 
-    // For each page node on the canvas
-    const pageNodes = nodes.filter((n) => n.type === "page");
-    for (const pageNode of pageNodes) {
-        // Find all output connections from this page
-        const outConns = connections.filter((c) => c.fromNodeId === pageNode.id);
-        for (const conn of outConns) {
-            // Extract element ID from port ID: "nodeId:out:elementId"
-            const parts = conn.fromPortId.split(":");
-            if (parts.length >= 3 && parts[1] === "out") {
-                const elementId = parts.slice(2).join(":");
-                const route = resolveRouteForElement(elementId, pageNode.refId);
-                if (route) {
-                    routeMap.set(elementId, route);
-                }
-            }
+    for (const flow of graph.flows) {
+        const route = flowToResolvedRoute(flow, flow.trigger.pageId);
+        if (route) {
+            routeMap.set(flow.trigger.elementId, route);
         }
     }
 
     return routeMap;
 }
 
+// ─── Internal: build graph from store state ───
+
+function buildGraphFromStores(): FlowGraph {
+    const routingState = useRoutingStore.getState();
+    const editorState = useEditorStore.getState();
+    const backendState = useBackendStore.getState();
+
+    const input: GraphResolverInput = {
+        nodes: routingState.nodes,
+        connections: routingState.connections,
+        pages: editorState.pages,
+        activePageId: editorState.activePageId,
+        activeElements: editorState.elements,
+        services: backendState.services,
+    };
+
+    return resolveGraph(input);
+}
+
+// ─── Internal: convert Flow → ResolvedRoute ───
+
+function flowToResolvedRoute(flow: Flow, pageId: string): ResolvedRoute | null {
+    const backendState = useBackendStore.getState();
+    const editorState = useEditorStore.getState();
+    const routingState = useRoutingStore.getState();
+
+    const result: ResolvedRoute = {
+        sourceElementId: flow.trigger.elementId,
+        sourcePageId: pageId,
+        connections: [],
+    };
+
+    for (const step of flow.steps) {
+        if (step.type === "api_call") {
+            const apiStep = step as ApiCallStep;
+            const service = backendState.services.find((s) => s.id === apiStep.serviceId);
+            if (service) {
+                result.service = service;
+                result.block = service.blocks.find((b) => b.id === apiStep.blockId);
+            }
+        } else if (step.type === "navigate") {
+            const page = editorState.pages.find((p) => p.id === step.pageId);
+            if (page) {
+                result.targetPageId = page.id;
+                result.targetPageTitle = page.title;
+            }
+        }
+    }
+
+    // Populate connections array from routing store for display purposes
+    const { connections, nodes } = routingState;
+    const pageNode = nodes.find((n) => n.type === "page" && n.refId === pageId);
+    if (pageNode) {
+        const outputPortId = `${pageNode.id}:out:${flow.trigger.elementId}`;
+        const outConn = connections.find((c) => c.fromPortId === outputPortId);
+        if (outConn) {
+            result.connections.push(outConn);
+            // Follow chain
+            const serviceNode = nodes.find((n) => n.id === outConn.toNodeId);
+            if (serviceNode) {
+                const serviceOutConns = connections.filter((c) => c.fromNodeId === serviceNode.id);
+                for (const sc of serviceOutConns) {
+                    result.connections.push(sc);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 /**
  * Simulate a backend service block execution.
  * Returns a simulated response based on block type/config.
+ *
+ * NOTE: This function remains as-is — simulation is runtime-only
+ * and is NOT part of the IR/codegen pipeline.
  */
 export function simulateServiceBlock(
     block: BackendBlock,
@@ -146,7 +152,6 @@ export function simulateServiceBlock(
 ): { success: boolean; data: Record<string, unknown>; message: string } {
     switch (block.type) {
         case "auth_block": {
-            // Simulate authentication — check if username/email and password exist
             const hasCredentials = Object.values(inputData).some(
                 (v) => v && v.trim().length > 0
             );
@@ -165,7 +170,6 @@ export function simulateServiceBlock(
         }
 
         case "logic_if": {
-            // If/else — pass if input data is non-empty
             const condition = Object.values(inputData).some(
                 (v) => v && v.trim().length > 0
             );

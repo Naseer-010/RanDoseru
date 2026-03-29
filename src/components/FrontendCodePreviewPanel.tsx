@@ -6,7 +6,7 @@ import { useBackendStore } from "@/store/backendStore";
 import { useRoutingStore } from "@/store/routingStore";
 import { generateFrontendProject } from "@/lib/codegen/frontend";
 import { generateProject } from "@/lib/codegen";
-import { resolveConnections } from "@/lib/codegen/connectionResolver";
+import { resolveGraph } from "@/lib/graphResolver";
 import { X, FileCode2, Eye, Server, Monitor, FolderOpen, Copy, Check } from "lucide-react";
 
 // ─── Lightweight Syntax Highlighter ───
@@ -132,24 +132,23 @@ const FrontendCodePreviewPanel: React.FC = () => {
 
     const activePage = pages.find((p) => p.id === activePageId);
 
-    // Resolve routing connections into element wirings
-    const wirings = useMemo(() => {
-        if (routingConnections.length === 0) return [];
-        return resolveConnections(
-            routingNodes,
-            routingConnections,
+    // Resolve routing canvas into FlowGraph (IR)
+    const flowGraph = useMemo(() => {
+        if (routingConnections.length === 0) return undefined;
+        return resolveGraph({
+            nodes: routingNodes,
+            connections: routingConnections,
             pages,
-            elements,
             activePageId,
+            activeElements: elements,
             services,
-            getPortsForNode
-        );
-    }, [routingNodes, routingConnections, pages, elements, activePageId, services, getPortsForNode]);
+        });
+    }, [routingNodes, routingConnections, pages, elements, activePageId, services]);
 
-    // Generate frontend code (include all pages' elements + routing wirings)
+    // Generate frontend code (include all pages' elements + IR flow graph)
     const { files: frontendFiles, previewHtml } = useMemo(() => {
-        return generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, wirings);
-    }, [elements, globalElements, canvasSettings, activePage, pages, wirings]);
+        return generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, undefined, flowGraph);
+    }, [elements, globalElements, canvasSettings, activePage, pages, flowGraph]);
 
     // Generate backend code
     const backendFiles = useMemo(() => {

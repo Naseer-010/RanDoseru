@@ -1,18 +1,27 @@
 // ═══════════════════════════════════════════════════
 // Code Generation — Orchestrator
 // ═══════════════════════════════════════════════════
+//
+// Pipeline:  Canvas State → resolveGraph() → validateIR() → codegen
+//
 
 import { ServiceContainer, ConnectionEdge } from "@/types/backend";
+import { FlowGraph } from "@/types/ir";
 import { generateServiceCode } from "./express";
 import { DOCKER_COMPOSE_TEMPLATE, README_TEMPLATE } from "./templates";
 
 /**
  * Generate all code files for the entire backend project.
  * Returns a flat file map: { "path/to/file.js": "content" }
+ *
+ * @param services       — backend service containers
+ * @param connections    — backend inter-service connections (for docker-compose)
+ * @param flowGraph      — optional IR for cross-referencing wired endpoints
  */
 export function generateProject(
     services: ServiceContainer[],
-    connections: ConnectionEdge[]
+    connections: ConnectionEdge[],
+    flowGraph?: FlowGraph
 ): Record<string, string> {
     const allFiles: Record<string, string> = {};
 

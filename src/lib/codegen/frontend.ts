@@ -1,4 +1,5 @@
 import { ElementNode, Page } from "@/types";
+import { FlowGraph, Flow, ApiCallStep, NavigateStep } from "@/types/ir";
 import { ElementWiring, EndpointTarget, PageTarget } from "./connectionResolver";
 
 type FrontendCodeResult = {
@@ -37,33 +38,73 @@ const textContent = (el: ElementNode, fallback: string): string => {
 
 const classNameFor = (el: ElementNode) => `el-${el.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
-// ─── Wiring helper: generate event handler attribute for a wired element ───
-function wiringAttr(
+// ─── Flow-based event handler generation ───
+
+/**
+ * Generate a multi-step event handler attribute from a Flow.
+ * Produces chained async logic: api_call → check response → navigate.
+ */
+function flowHandlerAttr(
     el: ElementNode,
-    wiringMap: Map<string, ElementWiring>,
+    flowMap: Map<string, Flow>,
     mode: "html" | "jsx"
 ): string {
-    const wiring = wiringMap.get(el.id);
-    if (!wiring || mode === "html") return "";
+    const flow = flowMap.get(el.id);
+    if (!flow || mode === "html") return "";
 
-    const t = wiring.target;
+    const steps = flow.steps;
+    if (steps.length === 0) return "";
 
-    if (t.kind === "page") {
-        const pt = t as PageTarget;
-        return ` onClick={() => { window.location.href = "${pt.pageRoute}"; }}`;
-    }
+    // Build handler body from ordered steps
+    const bodyLines: string[] = [];
 
-    if (t.kind === "endpoint") {
-        const ep = t as EndpointTarget;
-        if (el.type === "form") {
-            return ` onSubmit={async (e) => { e.preventDefault(); const fd = new FormData(e.target); const body = Object.fromEntries(fd.entries()); try { const res = await apiFetch("${ep.route}", { method: "${ep.method}", body: JSON.stringify(body) }); console.log("Response:", res); alert("Success!"); } catch (err) { console.error(err); alert("Error: " + err.message); } }}`;
+    for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+
+        if (step.type === "api_call") {
+            const apiStep = step as ApiCallStep;
+            if (el.type === "form" && i === 0) {
+                // Form: extract form data as body
+                bodyLines.push(`const fd = new FormData(e.target);`);
+                bodyLines.push(`const body = Object.fromEntries(fd.entries());`);
+                bodyLines.push(`const res = await apiFetch("${apiStep.endpoint}", { method: "${apiStep.method}", body: JSON.stringify(body) });`);
+            } else {
+                // Non-form click: send empty body or no body
+                const bodyArg = apiStep.method === "GET" || apiStep.method === "DELETE"
+                    ? "" : ", body: JSON.stringify({})";
+                bodyLines.push(`const res = await apiFetch("${apiStep.endpoint}", { method: "${apiStep.method}"${bodyArg} });`);
+            }
+        } else if (step.type === "navigate") {
+            const navStep = step as NavigateStep;
+            // If there was a preceding API call, only navigate on success
+            const prevIsApi = i > 0 && steps[i - 1].type === "api_call";
+            if (prevIsApi) {
+                bodyLines.push(`if (res) { window.location.href = "${navStep.pageRoute}"; }`);
+            } else {
+                bodyLines.push(`window.location.href = "${navStep.pageRoute}";`);
+            }
         }
-        // Button / image / other click handler
-        const bodyArg = ep.method === "GET" || ep.method === "DELETE" ? "" : ', body: JSON.stringify({})';
-        return ` onClick={async () => { try { const res = await apiFetch("${ep.route}", { method: "${ep.method}"${bodyArg} }); console.log("Response:", res); } catch (err) { console.error(err); } }}`;
     }
 
-    return "";
+    if (bodyLines.length === 0) return "";
+
+    const eventName = flow.trigger.event === "submit" ? "onSubmit" : "onClick";
+    const handlerBody = bodyLines.join(" ");
+
+    if (eventName === "onSubmit") {
+        return ` onSubmit={async (e) => { e.preventDefault(); try { ${handlerBody} } catch (err) { console.error(err); alert("Error: " + err.message); } }}`;
+    }
+
+    return ` onClick={async () => { try { ${handlerBody} } catch (err) { console.error(err); } }}`;
+}
+
+// ─── Legacy wiringAttr (used only for preview HTML mode, kept for compat) ───
+function wiringAttr(
+    el: ElementNode,
+    flowMap: Map<string, Flow>,
+    mode: "html" | "jsx"
+): string {
+    return flowHandlerAttr(el, flowMap, mode);
 }
 
 const renderElement = (
@@ -71,7 +112,7 @@ const renderElement = (
     isRoot: boolean,
     cssOut: Set<string>,
     mode: "html" | "jsx",
-    wiringMap: Map<string, ElementWiring> = new Map()
+    flowMap: Map<string, Flow> = new Map()
 ): string => {
     const className = classNameFor(el);
     const tag = (() => {
@@ -155,18 +196,18 @@ const renderElement = (
     const css = cssFromStyles(mergedStyles);
     cssOut.add(`.${className} { ${css} }`);
 
-    const children = (el.children || []).map((c) => renderElement(c, false, cssOut, mode, wiringMap)).join("");
+    const children = (el.children || []).map((c) => renderElement(c, false, cssOut, mode, flowMap)).join("");
     const clsAttr = mode === "jsx" ? "className" : "class";
 
     switch (el.type) {
         case "title":
         case "text":
         case "paragraph":
-            return `<${tag} ${clsAttr}="${className}"${wiringAttr(el, wiringMap, mode)}>${textContent(el, el.type === "title" ? "Heading" : "Text")}</${tag}>`;
+            return `<${tag} ${clsAttr}="${className}"${wiringAttr(el, flowMap, mode)}>${textContent(el, el.type === "title" ? "Heading" : "Text")}</${tag}>`;
         case "button":
-            return `<button ${clsAttr}="${className}"${wiringAttr(el, wiringMap, mode)}>${textContent(el, "Button")}</button>`;
+            return `<button ${clsAttr}="${className}"${wiringAttr(el, flowMap, mode)}>${textContent(el, "Button")}</button>`;
         case "image":
-            return `<img ${clsAttr}="${className}" src="${String(el.props?.src || "")}" alt="${String(el.props?.alt || "")}"${wiringAttr(el, wiringMap, mode)} />`;
+            return `<img ${clsAttr}="${className}" src="${String(el.props?.src || "")}" alt="${String(el.props?.alt || "")}"${wiringAttr(el, flowMap, mode)} />`;
         case "video":
             return `<video ${clsAttr}="${className}" ${el.props?.autoplay ? "autoplay" : ""} ${el.props?.loop ? "loop" : ""} ${el.props?.muted ? "muted" : ""} controls></video>`;
         case "menu": {
@@ -199,10 +240,10 @@ const renderElement = (
             const htmlMethod = requestMethod === "GET" ? "get" : "post";
             const requestUrl = String(el.props?.requestUrl || "").trim();
             const actionAttr = requestUrl ? ` action="${requestUrl}"` : "";
-            const formWiring = wiringAttr(el, wiringMap, mode);
-            // If form has a wiring, the onSubmit prevents default and uses fetch
-            if (formWiring) {
-                return `<form ${clsAttr}="${className}"${formWiring}>${children}</form>`;
+            const formHandler = wiringAttr(el, flowMap, mode);
+            // If form has a flow, the onSubmit prevents default and uses fetch
+            if (formHandler) {
+                return `<form ${clsAttr}="${className}"${formHandler}>${children}</form>`;
             }
             return `<form ${clsAttr}="${className}" method="${htmlMethod}" data-request-method="${requestMethod}"${actionAttr}>${children}</form>`;
         }
@@ -234,13 +275,51 @@ export function generateFrontendProject(
     canvasSettings: { backgroundColor: string; width: number; height: number },
     page?: Page,
     allPages?: Page[],
-    wirings?: ElementWiring[]
+    wirings?: ElementWiring[],
+    flowGraph?: FlowGraph
 ): FrontendCodeResult {
-    // Build wiring map keyed by elementId
-    const wiringMap = new Map<string, ElementWiring>();
-    if (wirings) {
+    // Build flow map keyed by trigger elementId (IR-first)
+    const flowMap = new Map<string, Flow>();
+    if (flowGraph) {
+        for (const flow of flowGraph.flows) {
+            flowMap.set(flow.trigger.elementId, flow);
+        }
+    } else if (wirings) {
+        // Legacy fallback: convert wirings to single-step flows
         for (const w of wirings) {
-            wiringMap.set(w.elementId, w);
+            const steps: import("@/types/ir").FlowStep[] = [];
+            if (w.target.kind === "endpoint") {
+                const ep = w.target as EndpointTarget;
+                steps.push({
+                    type: "api_call",
+                    method: ep.method,
+                    endpoint: ep.route,
+                    serviceName: ep.serviceName,
+                    servicePort: ep.servicePort,
+                    serviceId: "",
+                    blockId: "",
+                    authRequired: false,
+                });
+            } else if (w.target.kind === "page") {
+                const pt = w.target as PageTarget;
+                steps.push({
+                    type: "navigate",
+                    pageId: "",
+                    pageRoute: pt.pageRoute,
+                    pageTitle: pt.pageTitle,
+                });
+            }
+            flowMap.set(w.elementId, {
+                id: `compat_${w.elementId}`,
+                trigger: {
+                    elementId: w.elementId,
+                    elementType: w.elementType,
+                    pageId: "",
+                    pageRoute: "",
+                    event: w.elementType === "form" ? "submit" : "click",
+                },
+                steps,
+            });
         }
     }
     const cssParts = new Set<string>();
@@ -270,11 +349,11 @@ export function generateFrontendProject(
 
     safeGlobal.forEach((el) => {
         htmlParts.push(renderElement(el, false, cssParts, "html"));
-        jsxParts.push(renderElement(el, false, cssParts, "jsx", wiringMap));
+        jsxParts.push(renderElement(el, false, cssParts, "jsx", flowMap));
     });
     allElements.forEach((el) => {
         htmlParts.push(renderElement(el, true, cssParts, "html"));
-        jsxParts.push(renderElement(el, true, cssParts, "jsx", wiringMap));
+        jsxParts.push(renderElement(el, true, cssParts, "jsx", flowMap));
     });
 
     const canvasWidth = Math.max(320, Number(canvasSettings.width) || 1280);
@@ -308,7 +387,9 @@ hr { border: none; }
 </html>`;
 
     // Determine if we need the API client import
-    const hasEndpointWirings = wirings && wirings.some((w) => w.target.kind === "endpoint");
+    const hasEndpointWirings = flowGraph
+        ? flowGraph.flows.some((f) => f.steps.some((s) => s.type === "api_call"))
+        : wirings && wirings.some((w) => w.target.kind === "endpoint");
     const apiImport = hasEndpointWirings ? 'import { apiFetch } from "./api.js";\n' : "";
 
     const appJsx = `
@@ -376,12 +457,22 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     };
 
     // Generate API client helper if any endpoint wirings exist
-    if (hasEndpointWirings && wirings) {
+    if (hasEndpointWirings) {
         // Collect unique service base URLs
         const servicePorts = new Set<number>();
-        for (const w of wirings) {
-            if (w.target.kind === "endpoint") {
-                servicePorts.add((w.target as EndpointTarget).servicePort);
+        if (flowGraph) {
+            for (const flow of flowGraph.flows) {
+                for (const step of flow.steps) {
+                    if (step.type === "api_call") {
+                        servicePorts.add((step as ApiCallStep).servicePort);
+                    }
+                }
+            }
+        } else if (wirings) {
+            for (const w of wirings) {
+                if (w.target.kind === "endpoint") {
+                    servicePorts.add((w.target as EndpointTarget).servicePort);
+                }
             }
         }
         const defaultPort = servicePorts.values().next().value || 3001;
