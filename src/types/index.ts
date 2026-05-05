@@ -1,4 +1,6 @@
+// ═══════════════════════════════════════════════════
 // Type definitions for the serializable editor state
+// ═══════════════════════════════════════════════════
 
 export interface AnimationData {
     type: "fade" | "slide" | "scale" | "bounce" | "none";
@@ -49,39 +51,57 @@ export const CONTAINER_TYPES: ElementType[] = [
     "tabs",
 ];
 
-export interface ElementNode {
-    id: string;
-    type: ElementType;
-    label?: string; // user-friendly display name
-    props: Record<string, string | number | boolean>;
-    styles: Record<string, string | number>;
-    // Free-position coordinates (px, relative to canvas-page)
+// ─── Layout — separated from styles ───
+
+export interface ElementLayout {
     x: number;
     y: number;
     w: number;
     h: number;
+    position: "absolute" | "relative" | "static" | "fixed" | "sticky";
     opacity: number;    // 0–1
     rotation: number;   // degrees
     visible: boolean;
     locked: boolean;
+}
+
+// ─── Element Node ───
+
+export interface ElementNode {
+    id: string;
+    type: ElementType;
+    parentId: string | null;        // explicit parent reference (null = root)
+    label?: string;                 // user-friendly display name
+
+    props: Record<string, string | number | boolean>;
+    styles: Record<string, string | number>;
+    layout: ElementLayout;
+
     animation?: AnimationData;
     actions?: ActionData;
-    children: ElementNode[];
+
+    children: string[];              // child element IDs (not nested objects)
 }
+
+// ─── Page ───
 
 export interface Page {
     id: string;
     title: string;
     route: string;
-    elements: ElementNode[];
+    // Elements are tracked in the store via pageElementMap, not here.
 }
 
+// ─── Editor State (minimal shape for external consumers) ───
+
 export interface EditorState {
-    elements: ElementNode[];
+    elementsById: Record<string, ElementNode>;
+    rootIds: string[];
     selectedElementId: string | null;
 }
 
-// Sidebar category definitions
+// ─── Sidebar category definitions ───
+
 export interface SidebarCategory {
     id: string;
     label: string;
