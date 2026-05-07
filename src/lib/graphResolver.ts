@@ -27,7 +27,7 @@ export interface GraphResolverInput {
 
 // ─── Helpers ───
 
-/** Recursively collect actionable elements from an element tree. */
+/** Collect actionable elements from a flat array of elements. */
 function collectActionableElements(
     elements: ElementNode[]
 ): { id: string; type: string }[] {
@@ -36,14 +36,13 @@ function collectActionableElements(
         if (ACTIONABLE_ELEMENT_TYPES.includes(el.type)) {
             result.push({ id: el.id, type: el.type });
         }
-        if (el.children && el.children.length > 0) {
-            result.push(...collectActionableElements(el.children));
-        }
     }
     return result;
 }
 
-/** Get the effective elements for a page, considering the active page. */
+/** Get the effective elements for a page. 
+ * In the flat-map model, the caller provides activeElements for the current page.
+ * For non-active pages, we return an empty array (elements are loaded via pageElementMap). */
 function getPageElements(
     page: Page,
     activePageId: string,
@@ -52,7 +51,9 @@ function getPageElements(
     if (page.id === activePageId) {
         return activeElements;
     }
-    return page.elements;
+    // Non-active pages: elements not in memory in flat model
+    // Caller should pass all elements if multi-page resolution is needed
+    return [];
 }
 
 /** Determine the trigger event based on element type. */
