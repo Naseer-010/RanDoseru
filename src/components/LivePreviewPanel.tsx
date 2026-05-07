@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useEditorStore } from "@/store/editorStore";
 import { useRoutingStore } from "@/store/routingStore";
 import { resolveAllRoutes, simulateServiceBlock, ResolvedRoute } from "@/lib/routingEngine";
@@ -16,9 +16,10 @@ interface LivePreviewPanelProps {
 
 // ─── Interactive Element Renderer ───
 // Renders elements with functional forms, inputs, and routing-aware actions
+// Now works with flat-map store: children are string[] IDs
 
 interface LiveElementProps {
-    element: ElementNode;
+    elementId: string;
     isRoot: boolean;
     formData: Record<string, string>;
     setFormData: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -28,14 +29,16 @@ interface LiveElementProps {
 }
 
 const LiveElement: React.FC<LiveElementProps> = ({
-    element, isRoot, formData, setFormData, routeMap, onAction, pageId
+    elementId, isRoot, formData, setFormData, routeMap, onAction, pageId
 }) => {
-    if (!element.visible) return null;
+    const element = useEditorStore(s => s.elementsById[elementId]);
+    if (!element) return null;
+    if (!element.layout.visible) return null;
 
     const isContainer = CONTAINER_TYPES.includes(element.type);
     const isTextLike = element.type === "text" || element.type === "title" || element.type === "paragraph";
-    const widthPx = `${Math.max(40, element.w)}px`;
-    const heightPx = `${Math.max(20, element.h)}px`;
+    const widthPx = `${Math.max(40, element.layout.w)}px`;
+    const heightPx = `${Math.max(20, element.layout.h)}px`;
     const rawPosition = String(element.styles.position || "");
     const resolvedPosition = (rawPosition || (isContainer ? "relative" : "static")) as React.CSSProperties["position"];
     const isPositionedChild = resolvedPosition !== "static";
@@ -43,16 +46,16 @@ const LiveElement: React.FC<LiveElementProps> = ({
     const positionStyles: React.CSSProperties = isRoot
         ? {
             position: "absolute",
-            left: `${element.x}px`,
-            top: `${element.y}px`,
+            left: `${element.layout.x}px`,
+            top: `${element.layout.y}px`,
             width: widthPx,
             minHeight: heightPx,
             height: isTextLike ? "auto" : heightPx,
         }
         : {
             position: resolvedPosition,
-            left: isPositionedChild ? `${element.x}px` : undefined,
-            top: isPositionedChild ? `${element.y}px` : undefined,
+            left: isPositionedChild ? `${element.layout.x}px` : undefined,
+            top: isPositionedChild ? `${element.layout.y}px` : undefined,
             width: String(element.styles.width || widthPx),
             minHeight: heightPx,
             height: isTextLike ? "auto" : String(element.styles.height || heightPx),
@@ -64,17 +67,17 @@ const LiveElement: React.FC<LiveElementProps> = ({
         cursor: (element.styles.cursor as React.CSSProperties["cursor"]) || "default",
         userSelect: "none",
         overflow: isContainer ? "visible" : (isTextLike ? "visible" : "hidden"),
-        opacity: element.opacity ?? 1,
-        transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+        opacity: element.layout.opacity ?? 1,
+        transform: element.layout.rotation ? `rotate(${element.layout.rotation}deg)` : undefined,
     };
 
     const hasRoute = routeMap.has(element.id);
 
     const renderChildren = () =>
-        element.children.map((child) => (
+        element.children.map((childId) => (
             <LiveElement
-                key={child.id}
-                element={child}
+                key={childId}
+                elementId={childId}
                 isRoot={false}
                 formData={formData}
                 setFormData={setFormData}
@@ -172,12 +175,11 @@ const LiveElement: React.FC<LiveElementProps> = ({
                         noValidate={false}
                         onSubmit={(e) => {
                             e.preventDefault();
-                            // Use HTML5 validation
                             const formEl = e.currentTarget;
                             if (!formEl.reportValidity()) {
-                                return; // Browser shows native validation UI
+                                return;
                             }
-                            const submitBtn = findActionableChild(element);
+                            const submitBtn = findActionableChildById(element, useEditorStore.getState().elementsById);
                             if (submitBtn) {
                                 onAction(submitBtn.id, formData);
                             }
@@ -197,7 +199,6 @@ const LiveElement: React.FC<LiveElementProps> = ({
                 const isRequired = !!element.props.required;
                 const maxLength = Number(element.props.maxLength);
                 const minLength = Number(element.props.minLength);
-                // Auto-pattern for email
                 const pattern = inputType === "email"
                     ? String(element.props.pattern || "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}")
                     : element.props.pattern ? String(element.props.pattern) : undefined;
@@ -275,11 +276,13 @@ const LiveElement: React.FC<LiveElementProps> = ({
     );
 };
 
-// Find the first actionable child (button) inside a form
-function findActionableChild(element: ElementNode): ElementNode | null {
+// Find the first actionable child (button) inside a form — flat-map version
+function findActionableChildById(element: ElementNode, elementsById: Record<string, ElementNode>): ElementNode | null {
     if (element.type === "button") return element;
-    for (const child of element.children) {
-        const found = findActionableChild(child);
+    for (const childId of element.children) {
+        const child = elementsById[childId];
+        if (!child) continue;
+        const found = findActionableChildById(child, elementsById);
         if (found) return found;
     }
     return null;
@@ -297,7 +300,7 @@ interface ToastMsg {
 // ─── Main Panel ───
 
 const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
-    const { pages, activePageId, elements, globalElements, canvasSettings } = useEditorStore();
+    const { pages, activePageId, rootIds, globalRootIds, canvasSettings, pageElementMap } = useEditorStore();
 
     // Current page being viewed
     const [currentPageId, setCurrentPageId] = useState(activePageId || pages[0]?.id || "");
@@ -310,7 +313,7 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
 
     // Find current page
     const currentPage = pages.find((p) => p.id === currentPageId);
-    const pageElements = currentPageId === activePageId ? elements : (currentPage?.elements || []);
+    const pageRootIds = currentPageId === activePageId ? rootIds : (pageElementMap?.[currentPageId] || []);
 
     const canvasWidth = Math.max(320, Number(canvasSettings.width) || 1280);
     const canvasHeight = Math.max(200, Number(canvasSettings.height) || 900);
@@ -330,7 +333,7 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
     const navigateToPage = useCallback((pageId: string) => {
         setNavHistory((prev) => [...prev, currentPageId]);
         setCurrentPageId(pageId);
-        setFormData({}); // Reset form data on navigation
+        setFormData({});
         const page = pages.find((p) => p.id === pageId);
         addToast("info", `Navigated to ${page?.title || "page"}`, page?.route);
     }, [currentPageId, pages, addToast]);
@@ -361,12 +364,10 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
             return;
         }
 
-        // If there's a service block, simulate it
         if (route.service && route.block) {
             const result = simulateServiceBlock(route.block, data);
             if (result.success) {
                 addToast("success", result.message, route.block.label);
-                // If there's a target page, navigate after a brief delay
                 if (route.targetPageId) {
                     setTimeout(() => {
                         navigateToPage(route.targetPageId!);
@@ -376,7 +377,6 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
                 addToast("error", result.message, "Action blocked");
             }
         } else if (route.targetPageId) {
-            // Direct page-to-page navigation
             navigateToPage(route.targetPageId);
         }
     }, [routeMap, addToast, navigateToPage]);
@@ -440,11 +440,11 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
                             backgroundColor: canvasHasGradient ? undefined : canvasBackground,
                         }}
                     >
-                        {globalElements.length > 0 &&
-                            globalElements.map((el) => (
+                        {globalRootIds.length > 0 &&
+                            globalRootIds.map((id) => (
                                 <LiveElement
-                                    key={el.id}
-                                    element={el}
+                                    key={id}
+                                    elementId={id}
                                     isRoot={false}
                                     formData={formData}
                                     setFormData={setFormData}
@@ -454,10 +454,10 @@ const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ onClose }) => {
                                 />
                             ))
                         }
-                        {pageElements.map((el) => (
+                        {pageRootIds.map((id) => (
                             <LiveElement
-                                key={el.id}
-                                element={el}
+                                key={id}
+                                elementId={id}
                                 isRoot={true}
                                 formData={formData}
                                 setFormData={setFormData}

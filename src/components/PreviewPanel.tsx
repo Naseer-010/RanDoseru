@@ -9,7 +9,7 @@ interface PreviewPanelProps {
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({ onClose }) => {
-    const { elements, globalElements, canvasSettings, pages, activePageId } = useEditorStore();
+    const { rootIds, globalRootIds, canvasSettings, pages, activePageId } = useEditorStore();
     const activePage = pages.find((p) => p.id === activePageId);
     const canvasWidth = Math.max(320, Number(canvasSettings.width) || 1280);
     const canvasHeight = Math.max(200, Number(canvasSettings.height) || 900);
@@ -47,10 +47,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ onClose }) => {
                             backgroundColor: canvasHasGradient ? undefined : canvasBackground,
                         }}
                     >
-                        {globalElements.length > 0 && (
-                            <Renderer elements={globalElements} parentId={null} isRoot={false} readOnly />
+                        {globalRootIds.length > 0 && (
+                            <Renderer elementIds={globalRootIds} isRoot={false} readOnly />
                         )}
-                        <Renderer elements={elements} parentId={null} isRoot readOnly />
+                        <Renderer elementIds={rootIds} isRoot readOnly />
                     </div>
                 </div>
             </div>

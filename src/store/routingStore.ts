@@ -88,12 +88,6 @@ function collectActionableElements(
                 type: el.type,
             });
         }
-        if (el.children?.length > 0) {
-            const childLabel = getElementDisplayLabel(el);
-            result.push(
-                ...collectActionableElements(el.children, path ? `${path} › ${childLabel}` : childLabel)
-            );
-        }
     }
     return result;
 }
@@ -283,14 +277,23 @@ export const useRoutingStore = create<RoutingStore>((set, get) => ({
             const page = editorState.pages.find((p) => p.id === node.refId);
             if (!page) return [];
 
-            // Get current elements (if active page) or page's own elements
-            const elements =
+            // Get current elements for this page from flat store
+            const pageRootIds =
                 editorState.activePageId === page.id
-                    ? editorState.elements
-                    : page.elements;
+                    ? editorState.rootIds
+                    : (editorState.pageElementMap?.[page.id] || []);
+            
+            // Collect all elements (including children) for this page
+            const allElements: ElementNode[] = [];
+            const stack = [...pageRootIds];
+            while (stack.length > 0) {
+                const id = stack.pop()!;
+                const el = editorState.elementsById[id];
+                if (el) { allElements.push(el); stack.push(...el.children); }
+            }
 
             // Collect actionable elements as output ports
-            const actionables = collectActionableElements(elements);
+            const actionables = collectActionableElements(allElements);
             actionables.forEach((el, idx) => {
                 ports.push({
                     id: `${nodeId}:out:${el.id}`,

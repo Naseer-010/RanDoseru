@@ -4,7 +4,7 @@ import { useEditorStore } from "@/store/editorStore";
 import { useState } from "react";
 
 const PagesPanel: React.FC = () => {
-    const { pages, activePageId, elements, addPage, deletePage, renamePage, switchPage } = useEditorStore();
+    const { pages, activePageId, rootIds, elementsById, pageElementMap, addPage, deletePage, renamePage, switchPage } = useEditorStore();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState("");
 
@@ -20,22 +20,21 @@ const PagesPanel: React.FC = () => {
         setEditingId(null);
     };
 
+    const getPageRootIds = (pageId: string): string[] => {
+        if (pageId === activePageId) return rootIds;
+        return pageElementMap[pageId] || [];
+    };
+
     return (
         <div className="pages-panel">
             <div className="pages-header">
                 <span>Pages</span>
-                <button
-                    className="pages-add-btn"
-                    onClick={() => addPage()}
-                    title="Add new page"
-                >
-                    +
-                </button>
+                <button className="pages-add-btn" onClick={() => addPage()} title="Add new page">+</button>
             </div>
 
             <div className="pages-list">
                 {pages.map((page) => {
-                    const pageElements = page.id === activePageId ? elements : page.elements;
+                    const pageRoots = getPageRootIds(page.id);
                     return (
                     <div
                         key={page.id}
@@ -43,14 +42,17 @@ const PagesPanel: React.FC = () => {
                         onClick={() => switchPage(page.id)}
                     >
                         <div className="page-thumb">
-                            {pageElements.length === 0 ? (
+                            {pageRoots.length === 0 ? (
                                 <div className="page-thumb-empty">Empty Page</div>
                             ) : (
-                                pageElements.slice(0, 5).map((el, i) => (
-                                    <div key={`${page.id}-${el.id}`} className="page-thumb-row" style={{ opacity: Math.max(0.45, 1 - i * 0.1) }}>
-                                        {el.label || el.type}
-                                    </div>
-                                ))
+                                pageRoots.slice(0, 5).map((id, i) => {
+                                    const el = elementsById[id];
+                                    return el ? (
+                                        <div key={`${page.id}-${id}`} className="page-thumb-row" style={{ opacity: Math.max(0.45, 1 - i * 0.1) }}>
+                                            {el.label || el.type}
+                                        </div>
+                                    ) : null;
+                                })
                             )}
                         </div>
 
@@ -71,10 +73,7 @@ const PagesPanel: React.FC = () => {
                             ) : (
                                 <span
                                     className="page-title"
-                                    onDoubleClick={(e) => {
-                                        e.stopPropagation();
-                                        handleStartRename(page.id, page.title);
-                                    }}
+                                    onDoubleClick={(e) => { e.stopPropagation(); handleStartRename(page.id, page.title); }}
                                 >
                                     {page.title}
                                 </span>
@@ -85,10 +84,7 @@ const PagesPanel: React.FC = () => {
                         {pages.length > 1 && (
                             <button
                                 className="page-delete-btn"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    deletePage(page.id);
-                                }}
+                                onClick={(e) => { e.stopPropagation(); deletePage(page.id); }}
                                 title="Delete page"
                             >
                                 ×

@@ -207,7 +207,9 @@ const PropertyInspector: React.FC = () => {
         selectedElementId, getElement, updateElement, deleteElement, duplicateElement,
         updateElementOpacity, updateElementRotation, toggleVisibility, toggleLock,
         updateElementPosition, updateElementSize, canvasSettings, updateCanvasSettings,
+        elementsById, addElement: storeAddElement,
     } = useEditorStore();
+    const storeDeleteElement = deleteElement;
     const [activeTab, setActiveTab] = useState<"design" | "content" | "animate">("design");
     const [customCss, setCustomCss] = useState("");
     const [renamingElementId, setRenamingElementId] = useState<string | null>(null);
@@ -301,31 +303,18 @@ const PropertyInspector: React.FC = () => {
         }
         setRenamingElementId(null);
     };
-    const formFields = el.type === "form"
-        ? el.children.filter((child) => child.type === "input")
+    const formFieldIds = el.type === "form"
+        ? el.children.filter((childId) => { const c = elementsById[childId]; return c && c.type === "input"; })
         : [];
-    const updateFormChildren = (nextChildren: ElementNode[]) => {
-        if (el.type !== "form") return;
-        updateElement(el.id, { children: nextChildren });
-    };
+    const formFields = formFieldIds.map(id => elementsById[id]).filter(Boolean);
     const updateFormField = (fieldId: string, updates: Partial<ElementNode>) => {
         if (el.type !== "form") return;
-        const nextChildren = el.children.map((child) => {
-            if (child.id !== fieldId) return child;
-            return {
-                ...child,
-                ...updates,
-                props: updates.props ? { ...child.props, ...updates.props } : child.props,
-                styles: updates.styles ? { ...child.styles, ...updates.styles } : child.styles,
-            };
-        });
-        updateFormChildren(nextChildren);
+        updateElement(fieldId, updates);
     };
     const addFormField = () => {
         if (el.type !== "form") return;
         const nextIndex = formFields.length + 1;
-        const inputNode: ElementNode = {
-            id: createElementId(),
+        storeAddElement({
             type: "input",
             label: `Field ${nextIndex}`,
             props: {
@@ -342,25 +331,12 @@ const PropertyInspector: React.FC = () => {
                 width: "100%",
                 backgroundColor: "#ffffff",
             },
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 40,
-            opacity: 1,
-            rotation: 0,
-            visible: true,
-            locked: false,
-            children: [],
-        };
-        const submitIndex = el.children.findIndex((child) => child.type === "button");
-        const insertAt = submitIndex >= 0 ? submitIndex : el.children.length;
-        const nextChildren = [...el.children];
-        nextChildren.splice(insertAt, 0, inputNode);
-        updateFormChildren(nextChildren);
+            layout: { w: 360, h: 40 },
+        }, el.id);
     };
     const removeFormField = (fieldId: string) => {
         if (el.type !== "form") return;
-        updateFormChildren(el.children.filter((child) => child.id !== fieldId));
+        storeDeleteElement(fieldId);
     };
     const formRequestMethod = String(el.props.requestMethod || "POST").toUpperCase();
 
@@ -397,18 +373,18 @@ const PropertyInspector: React.FC = () => {
                 </div>
                 <div className="insp-header-actions">
                     <button
-                        className={`insp-icon-btn ${!el.visible ? "active-toggle" : ""}`}
+                        className={`insp-icon-btn ${!el.layout.visible ? "active-toggle" : ""}`}
                         onClick={() => toggleVisibility(el.id)}
-                        title={el.visible ? "Hide" : "Show"}
+                        title={el.layout.visible ? "Hide" : "Show"}
                     >
-                        {el.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                        {el.layout.visible ? <Eye size={14} /> : <EyeOff size={14} />}
                     </button>
                     <button
-                        className={`insp-icon-btn ${el.locked ? "active-toggle" : ""}`}
+                        className={`insp-icon-btn ${el.layout.locked ? "active-toggle" : ""}`}
                         onClick={() => toggleLock(el.id)}
-                        title={el.locked ? "Unlock" : "Lock"}
+                        title={el.layout.locked ? "Unlock" : "Lock"}
                     >
-                        {el.locked ? <Lock size={14} /> : <Unlock size={14} />}
+                        {el.layout.locked ? <Lock size={14} /> : <Unlock size={14} />}
                     </button>
                     <button className="insp-icon-btn" onClick={() => duplicateElement(el.id)} title="Duplicate"><Copy size={14} /></button>
                     <button className="insp-icon-btn danger" onClick={() => deleteElement(el.id)} title="Delete"><Trash2 size={14} /></button>
@@ -438,22 +414,22 @@ const PropertyInspector: React.FC = () => {
                                 <Field label="X">
                                     <input
                                         type="number"
-                                        value={Math.round(el.x)}
+                                        value={Math.round(el.layout.x)}
                                         onChange={(e) => {
                                             const parsed = parseNumericInput(e.target.value);
                                             if (parsed === null) return;
-                                            updateElementPosition(el.id, parsed, el.y);
+                                            updateElementPosition(el.id, parsed, el.layout.y);
                                         }}
                                     />
                                 </Field>
                                 <Field label="Y">
                                     <input
                                         type="number"
-                                        value={Math.round(el.y)}
+                                        value={Math.round(el.layout.y)}
                                         onChange={(e) => {
                                             const parsed = parseNumericInput(e.target.value);
                                             if (parsed === null) return;
-                                            updateElementPosition(el.id, el.x, parsed);
+                                            updateElementPosition(el.id, el.layout.x, parsed);
                                         }}
                                     />
                                 </Field>
@@ -462,22 +438,22 @@ const PropertyInspector: React.FC = () => {
                                 <Field label="W">
                                     <input
                                         type="number"
-                                        value={Math.round(el.w)}
+                                        value={Math.round(el.layout.w)}
                                         onChange={(e) => {
                                             const parsed = parseNumericInput(e.target.value);
                                             if (parsed === null) return;
-                                            updateElementSize(el.id, Math.max(40, parsed), el.h);
+                                            updateElementSize(el.id, Math.max(40, parsed), el.layout.h);
                                         }}
                                     />
                                 </Field>
                                 <Field label="H">
                                     <input
                                         type="number"
-                                        value={Math.round(el.h)}
+                                        value={Math.round(el.layout.h)}
                                         onChange={(e) => {
                                             const parsed = parseNumericInput(e.target.value);
                                             if (parsed === null) return;
-                                            updateElementSize(el.id, el.w, Math.max(20, parsed));
+                                            updateElementSize(el.id, el.layout.w, Math.max(20, parsed));
                                         }}
                                     />
                                 </Field>
@@ -486,7 +462,7 @@ const PropertyInspector: React.FC = () => {
                                 <Field label="Rotation">
                                     <input
                                         type="number"
-                                        value={el.rotation || 0}
+                                        value={el.layout.rotation || 0}
                                         onChange={(e) => {
                                             const parsed = parseNumericInput(e.target.value);
                                             if (parsed === null) return;
@@ -500,11 +476,11 @@ const PropertyInspector: React.FC = () => {
                                         <input
                                             type="range"
                                             min={0} max={100} step={1}
-                                            value={Math.round((el.opacity ?? 1) * 100)}
+                                            value={Math.round((el.layout.opacity ?? 1) * 100)}
                                             onChange={(e) => updateElementOpacity(el.id, Number(e.target.value) / 100)}
                                             className="opacity-slider"
                                         />
-                                        <span className="opacity-value">{Math.round((el.opacity ?? 1) * 100)}%</span>
+                                        <span className="opacity-value">{Math.round((el.layout.opacity ?? 1) * 100)}%</span>
                                     </div>
                                 </Field>
                             </div>

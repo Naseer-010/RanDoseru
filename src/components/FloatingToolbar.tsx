@@ -116,9 +116,9 @@ const FloatingToolbar: React.FC = () => {
                     <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
             </button>
-            <button className={`ft-btn ${!el.visible ? "ft-primary" : ""}`} onClick={() => toggleVisibility(el.id)} title={el.visible ? "Hide" : "Show"}>
+            <button className={`ft-btn ${!el.layout.visible ? "ft-primary" : ""}`} onClick={() => toggleVisibility(el.id)} title={el.layout.visible ? "Hide" : "Show"}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    {el.visible ? (
+                    {el.layout.visible ? (
                         <>
                             <path d="M1 8s2.5-4 7-4 7 4 7 4-2.5 4-7 4-7-4-7-4Z" stroke="currentColor" strokeWidth="1.3" />
                             <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
@@ -131,7 +131,7 @@ const FloatingToolbar: React.FC = () => {
                     )}
                 </svg>
             </button>
-            <button className={`ft-btn ${el.locked ? "ft-primary" : ""}`} onClick={() => toggleLock(el.id)} title={el.locked ? "Unlock" : "Lock"}>
+            <button className={`ft-btn ${el.layout.locked ? "ft-primary" : ""}`} onClick={() => toggleLock(el.id)} title={el.layout.locked ? "Unlock" : "Lock"}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <rect x="3.5" y="7" width="9" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
                     <path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" strokeWidth="1.3" />

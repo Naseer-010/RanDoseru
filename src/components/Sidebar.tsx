@@ -134,15 +134,18 @@ const Sidebar: React.FC = () => {
     const {
         sidebarOpen,
         setSidebarOpen,
-        globalElements,
+        globalRootIds,
+        elementsById,
+        rootIds,
         deleteGlobalElement,
         selectElement,
-        elements,
         canvasSettings,
         pages,
         activePageId,
         setFrontendGeneratedCode,
         setFrontendCodePreviewOpen,
+        getGlobalRootElements,
+        getRootElements,
     } = useEditorStore();
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -336,27 +339,31 @@ const Sidebar: React.FC = () => {
                                 <GlobalItem type="socialbar" label="Social Bar" description="Social media links" />
                             </div>
 
-                            {globalElements.length > 0 && (
+                            {globalRootIds.length > 0 && (
                                 <div className="global-current">
                                     <span className="global-section-title">Active Global Elements</span>
-                                    {globalElements.map((el) => (
-                                        <div key={el.id} className="global-active-item">
+                                    {globalRootIds.map((id) => {
+                                        const el = elementsById[id];
+                                        if (!el) return null;
+                                        return (
+                                        <div key={id} className="global-active-item">
                                             <span className="global-active-icon">{TILE_ICONS[el.type] || <Square size={14} />}</span>
                                             <span
                                                 className="global-active-name"
-                                                onClick={() => selectElement(el.id)}
+                                                onClick={() => selectElement(id)}
                                             >
                                                 {el.label || el.type}
                                             </span>
                                             <button
                                                 className="global-remove-btn"
-                                                onClick={() => deleteGlobalElement(el.id)}
+                                                onClick={() => deleteGlobalElement(id)}
                                                 title="Remove"
                                             >
                                                 ✕
                                             </button>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -477,9 +484,11 @@ const Sidebar: React.FC = () => {
                                             connections: routingState.connections,
                                             pages,
                                             activePageId,
-                                            activeElements: elements,
+                                            activeElements: getRootElements(),
                                             services: beState.services,
                                         });
+                                        const elements = getRootElements();
+                                        const globalElements = getGlobalRootElements();
                                         const { files } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, undefined, flowGraph);
                                         setFrontendGeneratedCode(files);
                                         setFrontendCodePreviewOpen(true);
@@ -498,9 +507,11 @@ const Sidebar: React.FC = () => {
                                             connections: routingState.connections,
                                             pages,
                                             activePageId,
-                                            activeElements: elements,
+                                            activeElements: getRootElements(),
                                             services: beState.services,
                                         });
+                                        const elements = getRootElements();
+                                        const globalElements = getGlobalRootElements();
                                         const { files: feFiles } = generateFrontendProject(elements, globalElements, canvasSettings, activePage, pages, undefined, flowGraph);
                                         const beFiles = beState.services.length > 0 ? generateProject(beState.services, beState.connections, flowGraph) : {};
                                         const allFiles: Record<string, string> = {};

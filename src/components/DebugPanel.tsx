@@ -4,10 +4,10 @@ import { useEditorStore } from "@/store/editorStore";
 import { useState } from "react";
 
 const DebugPanel: React.FC = () => {
-    const { elements, selectedElementId } = useEditorStore();
+    const { elementsById, rootIds, selectedElementId } = useEditorStore();
     const [expanded, setExpanded] = useState(false);
 
-    const state = { elements, selectedElementId };
+    const state = { elementsById, rootIds, selectedElementId };
     const json = JSON.stringify(state, null, 2);
     const serializable = (() => { try { JSON.parse(json); return true; } catch { return false; } })();
 
@@ -39,7 +39,7 @@ const DebugPanel: React.FC = () => {
                         >
                             Copy JSON
                         </button>
-                        <span className="debug-count">{elements.length} root element(s)</span>
+                        <span className="debug-count">{rootIds.length} root element(s)</span>
                     </div>
                     <pre>{json}</pre>
                 </div>

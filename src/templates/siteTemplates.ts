@@ -7,13 +7,13 @@ export interface SiteTemplate {
     category: string;
     thumbnail: string;
     previewUrl: string;
-    elements: Omit<ElementNode, "id">[];
+    elements: any[];
 }
 
 // ═══════════════════════════════════════════════════════════
 // Template 1 — Open: SaaS Landing Page
 // ═══════════════════════════════════════════════════════════
-const template1Elements: Omit<ElementNode, "id">[] = [
+const template1Elements: any[] = [
     // ─── Hero Section ───
     {
         type: "section",
@@ -388,7 +388,7 @@ const template1Elements: Omit<ElementNode, "id">[] = [
 // ═══════════════════════════════════════════════════════════
 // Template 2 — TailAdmin: Dashboard
 // ═══════════════════════════════════════════════════════════
-const template2Elements: Omit<ElementNode, "id">[] = [
+const template2Elements: any[] = [
     // ─── Top Header Bar ───
     {
         type: "section",
@@ -676,7 +676,7 @@ const template2Elements: Omit<ElementNode, "id">[] = [
 // ═══════════════════════════════════════════════════════════
 // Template 3 — Eldora UI: Portfolio
 // ═══════════════════════════════════════════════════════════
-const template3Elements: Omit<ElementNode, "id">[] = [
+const template3Elements: any[] = [
     // ─── Hero / Intro Section ───
     {
         type: "section",

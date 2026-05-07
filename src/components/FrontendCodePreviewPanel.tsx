@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useEditorStore } from "@/store/editorStore";
 import { useBackendStore } from "@/store/backendStore";
 import { useRoutingStore } from "@/store/routingStore";
@@ -113,13 +113,14 @@ function getLanguage(filename: string): string {
 
 const FrontendCodePreviewPanel: React.FC = () => {
     const {
-        elements,
-        globalElements,
         canvasSettings,
         pages,
         activePageId,
         setFrontendGeneratedCode,
         setFrontendCodePreviewOpen,
+        rootIds,
+        globalRootIds,
+        elementsById,
     } = useEditorStore();
 
     const { services, connections: backendConnections } = useBackendStore();
@@ -131,6 +132,16 @@ const FrontendCodePreviewPanel: React.FC = () => {
     const [copiedFile, setCopiedFile] = useState<string | null>(null);
 
     const activePage = pages.find((p) => p.id === activePageId);
+
+    // Reconstruct element arrays from stable IDs — only recomputes when IDs or map changes
+    const elements = useMemo(
+        () => rootIds.map(id => elementsById[id]).filter(Boolean),
+        [rootIds, elementsById]
+    );
+    const globalElements = useMemo(
+        () => globalRootIds.map(id => elementsById[id]).filter(Boolean),
+        [globalRootIds, elementsById]
+    );
 
     // Resolve routing canvas into FlowGraph (IR)
     const flowGraph = useMemo(() => {
@@ -180,10 +191,12 @@ const FrontendCodePreviewPanel: React.FC = () => {
     const activeFile = selectedFile;
     const activeFileContent = activeFile ? allFiles[activeFile] : null;
 
-    // Keep store in sync for export
+    // Keep store in sync for export — use a ref to avoid triggering re-renders
+    const allFilesRef = useRef(allFiles);
+    allFilesRef.current = allFiles;
     useEffect(() => {
-        setFrontendGeneratedCode(allFiles);
-    }, [allFiles, setFrontendGeneratedCode]);
+        setFrontendGeneratedCode(allFilesRef.current);
+    }, [frontendFiles, backendFiles, setFrontendGeneratedCode]);
 
     // Copy file content
     const copyFile = useCallback(async (filePath: string) => {

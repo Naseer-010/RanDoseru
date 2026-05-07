@@ -18,23 +18,13 @@ const RESOLUTION_PRESETS = [
     { label: "Mobile", width: 375, icon: <Smartphone size={14} /> },
 ];
 
-const findParentId = (
-    nodes: ElementNode[],
-    targetId: string,
-    parentId: string | null = null
-): string | null | undefined => {
-    for (const node of nodes) {
-        if (node.id === targetId) return parentId;
-        const childParentId = findParentId(node.children, targetId, node.id);
-        if (childParentId !== undefined) return childParentId;
-    }
-    return undefined;
-};
+// findParentId is no longer needed — elements have explicit parentId
 
 const Canvas: React.FC = () => {
     const {
-        elements,
-        globalElements,
+        elementsById,
+        rootIds,
+        globalRootIds,
         selectElement,
         selectElements,
         toggleSelectElement,
@@ -47,6 +37,7 @@ const Canvas: React.FC = () => {
         activePageId,
         canvasSettings,
         updateCanvasSettings,
+        getElement,
     } = useEditorStore();
     const [zoom, setZoom] = useState(100);
     const canvasPageRef = useRef<HTMLDivElement>(null);
@@ -161,14 +152,14 @@ const Canvas: React.FC = () => {
         siblings.forEach((el) => {
             if (el.id === dragState.current?.elementId) return;
             const edgesX = [
-                { key: "left", value: el.x },
-                { key: "center", value: el.x + el.w / 2 },
-                { key: "right", value: el.x + el.w },
+                { key: "left", value: el.layout.x },
+                { key: "center", value: el.layout.x + el.layout.w / 2 },
+                { key: "right", value: el.layout.x + el.layout.w },
             ];
             const edgesY = [
-                { key: "top", value: el.y },
-                { key: "center", value: el.y + el.h / 2 },
-                { key: "bottom", value: el.y + el.h },
+                { key: "top", value: el.layout.y },
+                { key: "center", value: el.layout.y + el.layout.h / 2 },
+                { key: "bottom", value: el.layout.y + el.layout.h },
             ];
 
             edgesX.forEach((t) => {
@@ -247,7 +238,7 @@ const Canvas: React.FC = () => {
                             const draggedRect = draggedNode.getBoundingClientRect();
                             const detachedX = Math.max(0, (draggedRect.left - canvasRect.left) / scale);
                             const detachedY = Math.max(0, (draggedRect.top - canvasRect.top) / scale);
-                            moveElement(ds.elementId, null, useEditorStore.getState().elements.length);
+                            moveElement(ds.elementId, null, useEditorStore.getState().rootIds.length);
                             updateElementPosition(ds.elementId, detachedX, detachedY);
                             dragState.current = {
                                 ...ds,
@@ -295,7 +286,7 @@ const Canvas: React.FC = () => {
                 const newX = Math.max(0, ds.startElX + dx);
                 const newY = Math.max(0, ds.startElY + dy);
                 const state = useEditorStore.getState();
-                const siblings = state.elements.filter((el) => el.id !== ds.elementId);
+                const siblings = state.rootIds.map(id => state.elementsById[id]).filter(el => el && el.id !== ds.elementId);
                 const snap = getSnap(newX, newY, ds.startElW, ds.startElH, siblings, {
                     canvasCenterX: canvasWidth / 2,
                     canvasCenterY: canvasHeight / 2,
@@ -412,7 +403,7 @@ const Canvas: React.FC = () => {
                     }
                 }
 
-                const pageParentId = findParentId(state.elements, ds.elementId);
+                const pageParentId = state.elementsById[ds.elementId]?.parentId ?? null;
                 if (pageParentId === undefined) {
                     dragState.current = null;
                     return;
@@ -530,7 +521,7 @@ const Canvas: React.FC = () => {
             e.stopPropagation();
             const elId = elementWrapper.getAttribute("data-element-id")!;
             const el = useEditorStore.getState().getElement(elId);
-            if (!el || el.locked) return;
+            if (!el || el.layout.locked) return;
             const rect = elementWrapper.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
@@ -541,15 +532,15 @@ const Canvas: React.FC = () => {
                 elementId: elId,
                 startX: e.clientX,
                 startY: e.clientY,
-                startElX: el.x,
-                startElY: el.y,
-                startElW: el.w,
-                startElH: el.h,
+                startElX: el.layout.x,
+                startElY: el.layout.y,
+                startElW: el.layout.w,
+                startElH: el.layout.h,
                 handle: "",
                 parentContainerId: null,
                 pointerId: e.pointerId,
                 startAngle: Math.atan2(e.clientY - centerY, e.clientX - centerX),
-                startRotation: el.rotation || 0,
+                startRotation: el.layout.rotation || 0,
                 centerX,
                 centerY,
             };
@@ -567,7 +558,7 @@ const Canvas: React.FC = () => {
             const elId = elementWrapper.getAttribute("data-element-id")!;
             const handle = resizeHandle.getAttribute("data-resize-handle")!;
             const el = useEditorStore.getState().getElement(elId);
-            if (!el || el.locked) return;
+            if (!el || el.layout.locked) return;
 
             dragState.current = {
                 dragging: false,
@@ -576,15 +567,15 @@ const Canvas: React.FC = () => {
                 elementId: elId,
                 startX: e.clientX,
                 startY: e.clientY,
-                startElX: el.x,
-                startElY: el.y,
-                startElW: el.w,
-                startElH: el.h,
+                startElX: el.layout.x,
+                startElY: el.layout.y,
+                startElW: el.layout.w,
+                startElH: el.layout.h,
                 handle,
                 parentContainerId: null,
                 pointerId: e.pointerId,
                 startAngle: 0,
-                startRotation: el.rotation || 0,
+                startRotation: el.layout.rotation || 0,
                 centerX: 0,
                 centerY: 0,
             };
@@ -600,7 +591,7 @@ const Canvas: React.FC = () => {
             e.stopPropagation();
             const elId = elementWrapper.getAttribute("data-element-id")!;
             const el = useEditorStore.getState().getElement(elId);
-            if (!el || el.locked) return;
+            if (!el || el.layout.locked) return;
 
             if (e.shiftKey) toggleSelectElement(elId);
             else selectElement(elId);
@@ -626,15 +617,15 @@ const Canvas: React.FC = () => {
                 elementId: elId,
                 startX: e.clientX,
                 startY: e.clientY,
-                startElX: el.x,
-                startElY: el.y,
-                startElW: el.w,
-                startElH: el.h,
+                startElX: el.layout.x,
+                startElY: el.layout.y,
+                startElW: el.layout.w,
+                startElH: el.layout.h,
                 handle: "",
                 parentContainerId,
                 pointerId: e.pointerId,
                 startAngle: 0,
-                startRotation: el.rotation || 0,
+                startRotation: el.layout.rotation || 0,
                 centerX: 0,
                 centerY: 0,
             };
@@ -711,18 +702,18 @@ const Canvas: React.FC = () => {
                         />
                     ))}
                     {/* Global elements — rendered on top of every page */}
-                    {globalElements.length > 0 && (
+                    {globalRootIds.length > 0 && (
                         <div className="canvas-global-zone canvas-global-top">
                             <div className="global-zone-label">
                                 <Globe size={10} />
                                 <span>Global</span>
                             </div>
-                            <Renderer elements={globalElements} parentId={null} isRoot={false} />
+                            <Renderer elementIds={globalRootIds} isRoot={false} />
                         </div>
                     )}
 
                     {/* Page elements */}
-                    {elements.length === 0 && globalElements.length === 0 ? (
+                    {rootIds.length === 0 && globalRootIds.length === 0 ? (
                         <div className="canvas-empty-state">
                             <div className="empty-icon">
                                 <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
@@ -734,7 +725,7 @@ const Canvas: React.FC = () => {
                             <p>Drag elements from the sidebar or double-click to add</p>
                         </div>
                     ) : (
-                        <Renderer elements={elements} parentId={null} isRoot={true} />
+                        <Renderer elementIds={rootIds} isRoot={true} />
                     )}
                 </div>
 

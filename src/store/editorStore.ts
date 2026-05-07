@@ -1,57 +1,40 @@
 import { create } from "zustand";
-import { ElementNode, Page } from "@/types";
-import { v4 as uuidv4 } from "uuid";
-
-// Default sizes per element type
-const DEFAULT_SIZES: Record<string, { w: number; h: number }> = {
-    section: { w: 800, h: 200 },
-    container: { w: 400, h: 200 },
-    columns: { w: 600, h: 200 },
-    stack: { w: 400, h: 200 },
-    title: { w: 400, h: 50 },
-    text: { w: 300, h: 30 },
-    paragraph: { w: 500, h: 80 },
-    button: { w: 160, h: 44 },
-    image: { w: 400, h: 280 },
-    video: { w: 480, h: 300 },
-    gallery: { w: 500, h: 250 },
-    form: { w: 400, h: 300 },
-    input: { w: 300, h: 44 },
-    shape: { w: 120, h: 120 },
-    divider: { w: 500, h: 4 },
-    menu: { w: 500, h: 44 },
-    repeater: { w: 400, h: 200 },
-    frame: { w: 500, h: 300 },
-    icon: { w: 48, h: 48 },
-    spacer: { w: 500, h: 40 },
-    socialbar: { w: 300, h: 48 },
-    accordion: { w: 500, h: 200 },
-    tabs: { w: 600, h: 300 },
-};
+import { ElementNode, Page, ElementType, CONTAINER_TYPES } from "@/types";
+import { generateElementId, generatePageId, deepCloneSubtree, syncCounters } from "@/lib/idGenerator";
+import { DEFAULT_LAYOUT, DEFAULT_STYLES, DEFAULT_PROPS } from "@/lib/defaults";
+import {
+    collectDescendantIds, isAncestorOf, getBreadcrumbPath as getBreadcrumbPathHelper,
+    findParentAndIndex, reorderSiblings, detachElement, attachElement,
+} from "./editorHelpers";
 
 const MAX_HISTORY = 50;
 
+interface HistorySnapshot {
+    elementsById: Record<string, ElementNode>;
+    rootIds: string[];
+    globalRootIds: string[];
+}
+
 interface EditorStore {
-    // Multi-page
+    elementsById: Record<string, ElementNode>;
+    rootIds: string[];
+    globalRootIds: string[];
     pages: Page[];
     activePageId: string;
-    elements: ElementNode[];
-    globalElements: ElementNode[];
+    pageElementMap: Record<string, string[]>;
     selectedElementId: string | null;
     selectedElementIds: string[];
     sidebarOpen: string | null;
-
-    // Clipboard
-    clipboard: ElementNode | null;
-
-    // History
-    past: ElementNode[][];
-    future: ElementNode[][];
+    clipboard: { element: ElementNode; subtree: Record<string, ElementNode> } | null;
+    past: HistorySnapshot[];
+    future: HistorySnapshot[];
     canUndo: boolean;
     canRedo: boolean;
+    canvasSettings: { backgroundColor: string; width: number; height: number };
+    frontendGeneratedCode: Record<string, string> | null;
+    frontendCodePreviewOpen: boolean;
 
-    // Actions
-    addElement: (element: Omit<ElementNode, "id">, parentId?: string, x?: number, y?: number) => string;
+    addElement: (elementData: Omit<ElementNode, "id" | "parentId" | "children" | "layout"> & { layout?: Partial<ElementNode["layout"]>; children?: string[] }, parentId?: string, x?: number, y?: number) => string;
     updateElement: (id: string, updates: Partial<ElementNode>) => void;
     updateElementPosition: (id: string, x: number, y: number) => void;
     updateElementSize: (id: string, w: number, h: number) => void;
@@ -63,291 +46,117 @@ interface EditorStore {
     deleteElement: (id: string) => void;
     duplicateElement: (id: string) => void;
     moveElement: (id: string, targetParentId: string | null, index: number) => void;
-    moveGlobalElement: (id: string, targetParentId: string | null, index: number) => void;
     selectElement: (id: string | null) => void;
     selectElements: (ids: string[]) => void;
     toggleSelectElement: (id: string) => void;
     setSidebarOpen: (categoryId: string | null) => void;
     reorderElements: (parentId: string | null, oldIndex: number, newIndex: number) => void;
-    reorderGlobalElements: (parentId: string | null, oldIndex: number, newIndex: number) => void;
     undo: () => void;
     redo: () => void;
-
-    // Arrange (z-order)
     bringForward: (id: string) => void;
     sendBackward: (id: string) => void;
     bringToFront: (id: string) => void;
     sendToBack: (id: string) => void;
-
-    // Clipboard
     copyElement: (id: string) => void;
     cutElement: (id: string) => void;
     pasteElement: () => void;
-
-    // Pages
     addPage: (title?: string) => string;
     deletePage: (id: string) => void;
     renamePage: (id: string, title: string) => void;
     switchPage: (id: string) => void;
-
-    // Global elements
-    addGlobalElement: (element: Omit<ElementNode, "id">) => string;
+    addGlobalElement: (elementData: Omit<ElementNode, "id" | "parentId" | "children" | "layout"> & { layout?: Partial<ElementNode["layout"]>; children?: string[] }) => string;
     deleteGlobalElement: (id: string) => void;
-
-    // Templates
-    loadTemplate: (elements: Omit<ElementNode, "id">[]) => void;
-
-    // Getters
+    loadTemplate: (elements: any[]) => void;
     getElement: (id: string) => ElementNode | undefined;
     getSelectedElement: () => ElementNode | undefined;
     getBreadcrumbPath: (id: string) => { id: string; type: string; label?: string }[];
-
-    // Canvas settings
-    canvasSettings: { backgroundColor: string; width: number; height: number };
+    getRootElements: () => ElementNode[];
+    getGlobalRootElements: () => ElementNode[];
+    getChildElements: (parentId: string) => ElementNode[];
     updateCanvasSettings: (settings: Partial<{ backgroundColor: string; width: number; height: number }>) => void;
-
-    // Frontend code preview
-    frontendGeneratedCode: Record<string, string> | null;
-    frontendCodePreviewOpen: boolean;
     setFrontendGeneratedCode: (code: Record<string, string> | null) => void;
     setFrontendCodePreviewOpen: (open: boolean) => void;
 }
 
-// Helper to find element
-const findElementById = (
-    elements: ElementNode[],
-    id: string
-): ElementNode | undefined => {
-    for (const el of elements) {
-        if (el.id === id) return el;
-        const found = findElementById(el.children, id);
-        if (found) return found;
-    }
-    return undefined;
-};
-
-// Helper to get breadcrumb path
-const findPathToElement = (
-    elements: ElementNode[],
-    targetId: string,
-    path: { id: string; type: string; label?: string }[] = []
-): { id: string; type: string; label?: string }[] | null => {
-    for (const el of elements) {
-        const currentPath = [...path, { id: el.id, type: el.type, label: el.label }];
-        if (el.id === targetId) return currentPath;
-        const found = findPathToElement(el.children, targetId, currentPath);
-        if (found) return found;
-    }
-    return null;
-};
-
-// Collect all ids in a subtree
-const collectElementIds = (element: ElementNode): string[] => {
-    const ids: string[] = [element.id];
-    element.children.forEach((child) => ids.push(...collectElementIds(child)));
-    return ids;
-};
-
-const containsId = (element: ElementNode, id: string): boolean => {
-    if (element.id === id) return true;
-    for (const child of element.children) {
-        if (containsId(child, id)) return true;
-    }
-    return false;
-};
-
-// Helper to update element in tree (preserve references when unchanged)
-const updateElementInTree = (
-    elements: ElementNode[],
-    id: string,
-    updates: Partial<ElementNode>
-): ElementNode[] => {
-    let changed = false;
-    const next = elements.map((el) => {
-        if (el.id === id) {
-            changed = true;
-            return { ...el, ...updates, children: updates.children ?? el.children };
-        }
-        const nextChildren = updateElementInTree(el.children, id, updates);
-        if (nextChildren !== el.children) {
-            changed = true;
-            return { ...el, children: nextChildren };
-        }
-        return el;
-    });
-    return changed ? next : elements;
-};
-
-// Helper to delete element from tree (preserve references when unchanged)
-const deleteElementFromTree = (
-    elements: ElementNode[],
-    id: string
-): ElementNode[] => {
-    let changed = false;
-    const next: ElementNode[] = [];
-    for (const el of elements) {
-        if (el.id === id) {
-            changed = true;
-            continue;
-        }
-        const nextChildren = deleteElementFromTree(el.children, id);
-        if (nextChildren !== el.children) {
-            changed = true;
-            next.push({ ...el, children: nextChildren });
-        } else {
-            next.push(el);
-        }
-    }
-    return changed ? next : elements;
-};
-
-// Helper to add element to tree (preserve references when unchanged)
-const addElementToTree = (
-    elements: ElementNode[],
-    element: ElementNode,
-    parentId?: string
-): ElementNode[] => {
-    if (!parentId) return [...elements, element];
-    let changed = false;
-    const next = elements.map((el) => {
-        if (el.id === parentId) {
-            changed = true;
-            return { ...el, children: [...el.children, element] };
-        }
-        const nextChildren = addElementToTree(el.children, element, parentId);
-        if (nextChildren !== el.children) {
-            changed = true;
-            return { ...el, children: nextChildren };
-        }
-        return el;
-    });
-    return changed ? next : elements;
-};
-
-// Deep clone with new IDs
-const deepCloneWithNewIds = (element: ElementNode): ElementNode => {
+function makeLayout(type: ElementType, overrides?: Partial<ElementNode["layout"]>, x?: number, y?: number): ElementNode["layout"] {
+    const def = DEFAULT_LAYOUT[type] || DEFAULT_LAYOUT.container;
     return {
-        ...element,
-        id: uuidv4(),
-        children: element.children.map(deepCloneWithNewIds),
+        ...def,
+        ...(overrides || {}),
+        x: x ?? overrides?.x ?? def.x,
+        y: y ?? overrides?.y ?? def.y,
+        w: overrides?.w ?? def.w,
+        h: overrides?.h ?? def.h,
     };
-};
+}
 
-// Remove element and return it
-const removeAndGetElement = (
-    elements: ElementNode[],
-    id: string
-): { elements: ElementNode[]; removed: ElementNode | null } => {
-    let removed: ElementNode | null = null;
-    const newElements = elements
-        .filter((el) => {
-            if (el.id === id) { removed = el; return false; }
-            return true;
-        })
-        .map((el) => {
-            if (!removed) {
-                const result = removeAndGetElement(el.children, id);
-                if (result.removed) {
-                    removed = result.removed;
-                    return { ...el, children: result.elements };
-                }
-            }
-            return el;
-        });
-    return { elements: newElements, removed };
-};
+function pushHistory(state: EditorStore): Partial<EditorStore> {
+    const snap: HistorySnapshot = {
+        elementsById: state.elementsById,
+        rootIds: state.rootIds,
+        globalRootIds: state.globalRootIds,
+    };
+    return {
+        past: [...state.past, snap].slice(-MAX_HISTORY),
+        future: [],
+        canUndo: true,
+        canRedo: false,
+    };
+}
 
-// Insert element at index
-const insertElementAtIndex = (
-    elements: ElementNode[],
-    element: ElementNode,
-    parentId: string | null,
-    index: number
-): ElementNode[] => {
-    if (!parentId) {
-        const arr = [...elements];
-        arr.splice(index, 0, element);
-        return arr;
+function updateLayout(el: ElementNode, patch: Partial<ElementNode["layout"]>): ElementNode {
+    return { ...el, layout: { ...el.layout, ...patch } };
+}
+
+// Build nested elements from template data (old format with nested children objects)
+function buildTemplateElements(
+    items: Array<Omit<ElementNode, "id" | "parentId" | "children" | "layout"> & { layout?: Partial<ElementNode["layout"]>; children?: any[]; x?: number; y?: number; w?: number; h?: number; opacity?: number; rotation?: number; visible?: boolean; locked?: boolean }>,
+    parentId: string | null
+): { byId: Record<string, ElementNode>; rootIds: string[] } {
+    const byId: Record<string, ElementNode> = {};
+    const rootIds: string[] = [];
+    for (const item of items) {
+        const id = generateElementId(item.type);
+        const childResult = item.children?.length
+            ? buildTemplateElements(item.children, id)
+            : { byId: {}, rootIds: [] };
+        // Merge old-format top-level layout fields with explicit layout object
+        const layoutOverrides: Partial<ElementNode["layout"]> = {
+            ...(item.layout || {}),
+        };
+        if (item.x !== undefined) layoutOverrides.x = item.x;
+        if (item.y !== undefined) layoutOverrides.y = item.y;
+        if (item.w !== undefined) layoutOverrides.w = item.w;
+        if (item.h !== undefined) layoutOverrides.h = item.h;
+        if (item.opacity !== undefined) layoutOverrides.opacity = item.opacity;
+        if (item.rotation !== undefined) layoutOverrides.rotation = item.rotation;
+        if (item.visible !== undefined) layoutOverrides.visible = item.visible;
+        if (item.locked !== undefined) layoutOverrides.locked = item.locked;
+
+        // Strip old-format fields from the spread
+        const { x: _x, y: _y, w: _w, h: _h, opacity: _o, rotation: _r, visible: _v, locked: _l, layout: _layout, children: _children, ...rest } = item;
+        byId[id] = {
+            ...rest,
+            id,
+            parentId,
+            layout: makeLayout(item.type, layoutOverrides),
+            children: childResult.rootIds,
+        } as ElementNode;
+        Object.assign(byId, childResult.byId);
+        rootIds.push(id);
     }
-    let changed = false;
-    const next = elements.map((el) => {
-        if (el.id === parentId) {
-            const c = [...el.children];
-            c.splice(index, 0, element);
-            changed = true;
-            return { ...el, children: c };
-        }
-        const nextChildren = insertElementAtIndex(el.children, element, parentId, index);
-        if (nextChildren !== el.children) {
-            changed = true;
-            return { ...el, children: nextChildren };
-        }
-        return el;
-    });
-    return changed ? next : elements;
-};
+    return { byId, rootIds };
+}
 
-// Find parent of element
-const findParentOf = (
-    elements: ElementNode[],
-    id: string,
-    parent: ElementNode | null = null
-): { parent: ElementNode | null; index: number } | null => {
-    for (let i = 0; i < elements.length; i++) {
-        if (elements[i].id === id) return { parent, index: i };
-        const found = findParentOf(elements[i].children, id, elements[i]);
-        if (found) return found;
-    }
-    return null;
-};
-
-// Reorder within a parent at any depth
-const reorderInTree = (
-    elements: ElementNode[],
-    parentId: string | null,
-    oldIndex: number,
-    newIndex: number
-): ElementNode[] => {
-    if (!parentId) {
-        const arr = [...elements];
-        if (oldIndex < 0 || newIndex < 0 || oldIndex >= arr.length || newIndex >= arr.length) return elements;
-        const [r] = arr.splice(oldIndex, 1);
-        arr.splice(newIndex, 0, r);
-        return arr;
-    }
-    let changed = false;
-    const next = elements.map((el) => {
-        if (el.id === parentId) {
-            const c = [...el.children];
-            if (oldIndex < 0 || newIndex < 0 || oldIndex >= c.length || newIndex >= c.length) return el;
-            const [r] = c.splice(oldIndex, 1);
-            c.splice(newIndex, 0, r);
-            changed = true;
-            return { ...el, children: c };
-        }
-        const nextChildren = reorderInTree(el.children, parentId, oldIndex, newIndex);
-        if (nextChildren !== el.children) {
-            changed = true;
-            return { ...el, children: nextChildren };
-        }
-        return el;
-    });
-    return changed ? next : elements;
-};
-
-// Push a snapshot to history and mutate elements
-const pushHistory = (state: EditorStore): { past: ElementNode[][]; future: ElementNode[][] } => {
-    const newPast = [...state.past, state.elements].slice(-MAX_HISTORY);
-    return { past: newPast, future: [] };
-};
-
-const defaultPageId = uuidv4();
+const defaultPageId = generatePageId();
 
 export const useEditorStore = create<EditorStore>((set, get) => ({
-    pages: [{ id: defaultPageId, title: "Home", route: "/", elements: [] }],
+    elementsById: {},
+    rootIds: [],
+    globalRootIds: [],
+    pages: [{ id: defaultPageId, title: "Home", route: "/" }],
     activePageId: defaultPageId,
-    elements: [],
-    globalElements: [],
+    pageElementMap: { [defaultPageId]: [] },
     selectedElementId: null,
     selectedElementIds: [],
     sidebarOpen: "add",
@@ -361,365 +170,224 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     frontendCodePreviewOpen: false,
 
     addElement: (elementData, parentId, dropX, dropY) => {
-        const id = uuidv4();
-        const defaults = DEFAULT_SIZES[elementData.type] || { w: 200, h: 100 };
-        const existingCount = get().elements.length;
-        const offsetX = dropX ?? 100 + (existingCount % 5) * 30;
-        const offsetY = dropY ?? 100 + (existingCount % 5) * 30;
-        set((state) => {
-            const parentInGlobal = parentId ? Boolean(findElementById(state.globalElements, parentId)) : false;
-            const parentNode = parentId
-                ? (parentInGlobal
-                    ? findElementById(state.globalElements, parentId)
-                    : findElementById(state.elements, parentId))
-                : undefined;
-            const inFreeContainer = parentNode?.type === "container";
-            const childX = Math.max(0, dropX ?? 0);
-            const childY = Math.max(0, dropY ?? 0);
-            const element: ElementNode = {
-                ...elementData,
-                id,
-                styles: inFreeContainer
-                    ? {
-                        ...elementData.styles,
-                        position: String(elementData.styles.position || "absolute"),
-                    }
-                    : elementData.styles,
-                x: parentId ? (inFreeContainer ? childX : 0) : offsetX,
-                y: parentId ? (inFreeContainer ? childY : 0) : offsetY,
-                w: elementData.w || defaults.w,
-                h: elementData.h || defaults.h,
-                opacity: elementData.opacity ?? 1,
-                rotation: elementData.rotation ?? 0,
-                visible: elementData.visible ?? true,
-                locked: elementData.locked ?? false,
-                children: elementData.children?.map(deepCloneWithNewIds) || [],
-            };
-
-            if (parentInGlobal) {
-                return {
-                    globalElements: addElementToTree(state.globalElements, element, parentId),
-                    selectedElementId: id,
-                };
+        const id = generateElementId(elementData.type);
+        const isInContainer = parentId ? CONTAINER_TYPES.includes(get().elementsById[parentId]?.type) : false;
+        const existingCount = Object.keys(get().elementsById).length;
+        const posX = dropX ?? (parentId ? 0 : 100 + (existingCount % 5) * 30);
+        const posY = dropY ?? (parentId ? 0 : 100 + (existingCount % 5) * 30);
+        const layoutOverrides: Partial<ElementNode["layout"]> = {
+            ...elementData.layout,
+            x: posX,
+            y: posY,
+            position: isInContainer ? (elementData.layout?.position || "absolute") : (elementData.layout?.position || DEFAULT_LAYOUT[elementData.type]?.position || "absolute"),
+        };
+        const element: ElementNode = {
+            type: elementData.type,
+            label: elementData.label,
+            props: elementData.props || { ...(DEFAULT_PROPS[elementData.type] || {}) },
+            styles: elementData.styles || { ...(DEFAULT_STYLES[elementData.type] || {}) },
+            animation: elementData.animation,
+            actions: elementData.actions,
+            id,
+            parentId: parentId || null,
+            layout: makeLayout(elementData.type, layoutOverrides),
+            children: [],
+        };
+        set(state => {
+            const validParent = parentId && state.elementsById[parentId] ? parentId : undefined;
+            const hist = pushHistory(state);
+            const next = { ...state.elementsById, [id]: { ...element, parentId: validParent || null } };
+            let newRoots = state.rootIds;
+            if (validParent && next[validParent]) {
+                next[validParent] = { ...next[validParent], children: [...next[validParent].children, id] };
+            } else {
+                newRoots = [...state.rootIds, id];
             }
-
-            const validPageParent = parentId && findElementById(state.elements, parentId) ? parentId : undefined;
-            const history = pushHistory(state);
-            return {
-                elements: addElementToTree(state.elements, element, validPageParent),
-                selectedElementId: id,
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+            return { elementsById: next, rootIds: newRoots, selectedElementId: id, selectedElementIds: [id], ...hist };
         });
         return id;
     },
 
     updateElement: (id, updates) => {
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, updates),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            const history = pushHistory(state);
-            return {
-                elements: updateElementInTree(state.elements, id, updates),
-                ...history,
-                canUndo: true,
-                canRedo: false,
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            const hist = pushHistory(state);
+            const el = state.elementsById[id];
+            const next = { ...state.elementsById };
+            next[id] = {
+                ...el,
+                ...updates,
+                layout: updates.layout ? { ...el.layout, ...updates.layout } : el.layout,
+                props: updates.props ? { ...el.props, ...updates.props } : el.props,
+                styles: updates.styles ? { ...el.styles, ...updates.styles } : el.styles,
+                children: updates.children ?? el.children,
+                id: el.id, parentId: el.parentId,
             };
+            return { elementsById: next, ...hist };
         });
     },
 
     updateElementPosition: (id, x, y) => {
-        // Position updates are frequent during drag — don't push to history
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { x, y }),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            return {
-                elements: updateElementInTree(state.elements, id, { x, y }),
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(state.elementsById[id], { x, y }) } };
         });
     },
 
     updateElementSize: (id, w, h) => {
-        // Size updates are frequent during resize — don't push to history
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { w, h }),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            return {
-                elements: updateElementInTree(state.elements, id, { w, h }),
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(state.elementsById[id], { w, h }) } };
         });
     },
 
     updateElementOpacity: (id, opacity) => {
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { opacity }),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            const history = pushHistory(state);
-            return {
-                elements: updateElementInTree(state.elements, id, { opacity }),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            const hist = pushHistory(state);
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(state.elementsById[id], { opacity }) }, ...hist };
         });
     },
 
     updateElementRotation: (id, rotation) => {
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { rotation }),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            const history = pushHistory(state);
-            return {
-                elements: updateElementInTree(state.elements, id, { rotation }),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            const hist = pushHistory(state);
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(state.elementsById[id], { rotation }) }, ...hist };
         });
     },
 
     updateElementRotationLive: (id, rotation) => {
-        // Rotation updates are frequent during drag — don't push to history
-        set((state) => {
-            if (findElementById(state.globalElements, id)) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { rotation }),
-                };
-            }
-
-            if (!findElementById(state.elements, id)) return state;
-            return {
-                elements: updateElementInTree(state.elements, id, { rotation }),
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(state.elementsById[id], { rotation }) } };
         });
     },
 
     toggleVisibility: (id) => {
-        set((state) => {
-            const globalEl = findElementById(state.globalElements, id);
-            if (globalEl) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { visible: !globalEl.visible }),
-                };
-            }
-
-            const el = findElementById(state.elements, id);
+        set(state => {
+            const el = state.elementsById[id];
             if (!el) return state;
-            const history = pushHistory(state);
-            return {
-                elements: updateElementInTree(state.elements, id, { visible: !el.visible }),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+            const hist = pushHistory(state);
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(el, { visible: !el.layout.visible }) }, ...hist };
         });
     },
 
     toggleLock: (id) => {
-        set((state) => {
-            const globalEl = findElementById(state.globalElements, id);
-            if (globalEl) {
-                return {
-                    globalElements: updateElementInTree(state.globalElements, id, { locked: !globalEl.locked }),
-                };
-            }
-
-            const el = findElementById(state.elements, id);
+        set(state => {
+            const el = state.elementsById[id];
             if (!el) return state;
-            const history = pushHistory(state);
-            return {
-                elements: updateElementInTree(state.elements, id, { locked: !el.locked }),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+            const hist = pushHistory(state);
+            return { elementsById: { ...state.elementsById, [id]: updateLayout(el, { locked: !el.layout.locked }) }, ...hist };
         });
     },
 
     deleteElement: (id) => {
-        set((state) => {
-            const globalEl = findElementById(state.globalElements, id);
-            if (globalEl) {
-                const removedIds = collectElementIds(globalEl);
-                return {
-                    globalElements: deleteElementFromTree(state.globalElements, id),
-                    selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
-                    selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
-                };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            const toDelete = collectDescendantIds(state.elementsById, id);
+            const el = state.elementsById[id];
+            const hist = pushHistory(state);
+            const next = { ...state.elementsById };
+            if (el.parentId && next[el.parentId]) {
+                next[el.parentId] = { ...next[el.parentId], children: next[el.parentId].children.filter(c => !toDelete.has(c)) };
             }
-
-            const pageEl = findElementById(state.elements, id);
-            if (!pageEl) return state;
-            const removedIds = collectElementIds(pageEl);
-            const history = pushHistory(state);
+            for (const did of toDelete) delete next[did];
             return {
-                elements: deleteElementFromTree(state.elements, id),
-                selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
-                selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
-                ...history,
-                canUndo: true,
-                canRedo: false,
+                elementsById: next,
+                rootIds: state.rootIds.filter(r => !toDelete.has(r)),
+                globalRootIds: state.globalRootIds.filter(r => !toDelete.has(r)),
+                selectedElementId: toDelete.has(state.selectedElementId || "") ? null : state.selectedElementId,
+                selectedElementIds: state.selectedElementIds.filter(s => !toDelete.has(s)),
+                ...hist,
             };
         });
     },
 
     duplicateElement: (id) => {
         const state = get();
-        const pageElement = findElementById(state.elements, id);
-        if (pageElement) {
-            const clone = deepCloneWithNewIds(pageElement);
-            clone.x += 20;
-            clone.y += 20;
-            const parentInfo = findParentOf(state.elements, id);
-            const parentId = parentInfo?.parent?.id;
-
-            set((s) => {
-                const history = pushHistory(s);
-                return {
-                    elements: addElementToTree(s.elements, clone, parentId),
-                    selectedElementId: clone.id,
-                    ...history,
-                    canUndo: true,
-                    canRedo: false,
-                };
-            });
-            return;
-        }
-
-        const globalElement = findElementById(state.globalElements, id);
-        if (!globalElement) return;
-
-        const clone = deepCloneWithNewIds(globalElement);
-        clone.x += 20;
-        clone.y += 20;
-        const parentInfo = findParentOf(state.globalElements, id);
-        const parentId = parentInfo?.parent?.id;
-
-        set((s) => ({
-            globalElements: addElementToTree(s.globalElements, clone, parentId),
-            selectedElementId: clone.id,
-        }));
+        const el = state.elementsById[id];
+        if (!el) return;
+        const { clonedRootId, allCloned } = deepCloneSubtree(el, state.elementsById, el.parentId);
+        allCloned[clonedRootId] = updateLayout(allCloned[clonedRootId], {
+            x: allCloned[clonedRootId].layout.x + 20,
+            y: allCloned[clonedRootId].layout.y + 20,
+        });
+        set(s => {
+            const hist = pushHistory(s);
+            const next = { ...s.elementsById, ...allCloned };
+            let newRoots = s.rootIds;
+            let newGlobalRoots = s.globalRootIds;
+            if (el.parentId && next[el.parentId]) {
+                next[el.parentId] = { ...next[el.parentId], children: [...next[el.parentId].children, clonedRootId] };
+            } else if (s.globalRootIds.includes(id)) {
+                newGlobalRoots = [...s.globalRootIds, clonedRootId];
+            } else {
+                newRoots = [...s.rootIds, clonedRootId];
+            }
+            return { elementsById: next, rootIds: newRoots, globalRootIds: newGlobalRoots, selectedElementId: clonedRootId, ...hist };
+        });
     },
 
     moveElement: (id, targetParentId, index) => {
-        set((state) => {
-            const element = findElementById(state.elements, id);
-            if (!element) return state;
-            if (targetParentId && containsId(element, targetParentId)) return state;
-            if (targetParentId && !findElementById(state.elements, targetParentId)) return state;
-            const history = pushHistory(state);
-            const { elements, removed } = removeAndGetElement(state.elements, id);
-            if (!removed) return state;
-            return {
-                elements: insertElementAtIndex(elements, removed, targetParentId, index),
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            if (targetParentId && !state.elementsById[targetParentId]) return state;
+            if (targetParentId && isAncestorOf(state.elementsById, id, targetParentId)) return state;
+            if (targetParentId === id) return state;
+            const hist = pushHistory(state);
+            const d = detachElement(state.elementsById, state.rootIds, id);
+            const a = attachElement(d.byId, d.rootIds, id, targetParentId, index);
+            return { elementsById: a.byId, rootIds: a.rootIds, ...hist };
         });
     },
 
-    moveGlobalElement: (id, targetParentId, index) => {
-        set((state) => {
-            const element = findElementById(state.globalElements, id);
-            if (!element) return state;
-            if (targetParentId && containsId(element, targetParentId)) return state;
-            if (targetParentId && !findElementById(state.globalElements, targetParentId)) return state;
-            const { elements, removed } = removeAndGetElement(state.globalElements, id);
-            if (!removed) return state;
-            return {
-                globalElements: insertElementAtIndex(elements, removed, targetParentId, index),
-            };
-        });
-    },
-
-    selectElement: (id) => {
-        set({ selectedElementId: id, selectedElementIds: id ? [id] : [] });
-    },
+    selectElement: (id) => set({ selectedElementId: id, selectedElementIds: id ? [id] : [] }),
 
     selectElements: (ids) => {
-        const unique = Array.from(new Set(ids));
-        set({
-            selectedElementIds: unique,
-            selectedElementId: unique.length > 0 ? unique[unique.length - 1] : null,
-        });
+        const u = Array.from(new Set(ids));
+        set({ selectedElementIds: u, selectedElementId: u.length > 0 ? u[u.length - 1] : null });
     },
 
     toggleSelectElement: (id) => {
-        set((state) => {
+        set(state => {
             const exists = state.selectedElementIds.includes(id);
-            const nextIds = exists
-                ? state.selectedElementIds.filter((sid) => sid !== id)
-                : [...state.selectedElementIds, id];
-            const nextPrimary = nextIds.length > 0 ? nextIds[nextIds.length - 1] : null;
-            return {
-                selectedElementIds: nextIds,
-                selectedElementId: nextPrimary,
-            };
+            const next = exists ? state.selectedElementIds.filter(s => s !== id) : [...state.selectedElementIds, id];
+            return { selectedElementIds: next, selectedElementId: next.length > 0 ? next[next.length - 1] : null };
         });
     },
 
-    setSidebarOpen: (categoryId) => {
-        set({ sidebarOpen: categoryId });
-    },
+    setSidebarOpen: (categoryId) => set({ sidebarOpen: categoryId }),
 
     reorderElements: (parentId, oldIndex, newIndex) => {
-        set((state) => {
+        set(state => {
             if (oldIndex === newIndex) return state;
-            if (parentId && !findElementById(state.elements, parentId)) return state;
-            const history = pushHistory(state);
-            const nextElements = reorderInTree(state.elements, parentId, oldIndex, newIndex);
-            if (nextElements === state.elements) return state;
-            return { elements: nextElements, ...history, canUndo: true, canRedo: false };
-        });
-    },
-
-    reorderGlobalElements: (parentId, oldIndex, newIndex) => {
-        set((state) => {
-            if (oldIndex === newIndex) return state;
-            if (parentId && !findElementById(state.globalElements, parentId)) return state;
-            const nextElements = reorderInTree(state.globalElements, parentId, oldIndex, newIndex);
-            if (nextElements === state.globalElements) return state;
-            return { globalElements: nextElements };
+            const hist = pushHistory(state);
+            if (!parentId) {
+                const newRoots = reorderSiblings(state.rootIds, oldIndex, newIndex);
+                return newRoots === state.rootIds ? state : { rootIds: newRoots, ...hist };
+            }
+            const parent = state.elementsById[parentId];
+            if (!parent) return state;
+            const newChildren = reorderSiblings(parent.children, oldIndex, newIndex);
+            return {
+                elementsById: { ...state.elementsById, [parentId]: { ...parent, children: newChildren } },
+                ...hist,
+            };
         });
     },
 
     undo: () => {
-        set((state) => {
+        set(state => {
             if (state.past.length === 0) return state;
             const newPast = [...state.past];
-            const previous = newPast.pop()!;
+            const prev = newPast.pop()!;
             return {
                 past: newPast,
-                elements: previous,
-                future: [state.elements, ...state.future],
+                elementsById: prev.elementsById,
+                rootIds: prev.rootIds,
+                globalRootIds: prev.globalRootIds,
+                future: [{ elementsById: state.elementsById, rootIds: state.rootIds, globalRootIds: state.globalRootIds }, ...state.future],
                 canUndo: newPast.length > 0,
                 canRedo: true,
             };
@@ -727,241 +395,211 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     },
 
     redo: () => {
-        set((state) => {
+        set(state => {
             if (state.future.length === 0) return state;
             const newFuture = [...state.future];
             const next = newFuture.shift()!;
             return {
                 future: newFuture,
-                elements: next,
-                past: [...state.past, state.elements],
+                elementsById: next.elementsById,
+                rootIds: next.rootIds,
+                globalRootIds: next.globalRootIds,
+                past: [...state.past, { elementsById: state.elementsById, rootIds: state.rootIds, globalRootIds: state.globalRootIds }],
                 canUndo: true,
                 canRedo: newFuture.length > 0,
             };
         });
     },
 
-    getElement: (id) => {
-        const found = findElementById(get().elements, id);
-        if (found) return found;
-        return findElementById(get().globalElements, id);
-    },
-
+    getElement: (id) => get().elementsById[id],
     getSelectedElement: () => {
-        const { selectedElementId, elements, globalElements } = get();
-        if (!selectedElementId) return undefined;
-        return findElementById(elements, selectedElementId) || findElementById(globalElements, selectedElementId);
+        const { selectedElementId, elementsById } = get();
+        return selectedElementId ? elementsById[selectedElementId] : undefined;
+    },
+    getBreadcrumbPath: (id) => getBreadcrumbPathHelper(get().elementsById, id),
+
+    getRootElements: () => {
+        const { rootIds, elementsById } = get();
+        return rootIds.map(id => elementsById[id]).filter(Boolean);
+    },
+    getGlobalRootElements: () => {
+        const { globalRootIds, elementsById } = get();
+        return globalRootIds.map(id => elementsById[id]).filter(Boolean);
+    },
+    getChildElements: (parentId) => {
+        const { elementsById } = get();
+        const parent = elementsById[parentId];
+        if (!parent) return [];
+        return parent.children.map(id => elementsById[id]).filter(Boolean);
     },
 
-    getBreadcrumbPath: (id) => {
-        return findPathToElement(get().elements, id) || findPathToElement(get().globalElements, id) || [];
-    },
-
-    // ─── Arrange (z-order) ───
     bringForward: (id) => {
-        const state = get();
-        const info = findParentOf(state.elements, id);
+        const info = findParentAndIndex(get().elementsById, get().rootIds, id);
         if (!info) return;
-        const siblings = info.parent ? info.parent.children : state.elements;
+        const siblings = info.parentId ? get().elementsById[info.parentId]?.children : get().rootIds;
         if (info.index >= siblings.length - 1) return;
-        get().reorderElements(info.parent?.id ?? null, info.index, info.index + 1);
+        get().reorderElements(info.parentId, info.index, info.index + 1);
     },
-
     sendBackward: (id) => {
-        const state = get();
-        const info = findParentOf(state.elements, id);
+        const info = findParentAndIndex(get().elementsById, get().rootIds, id);
         if (!info || info.index <= 0) return;
-        get().reorderElements(info.parent?.id ?? null, info.index, info.index - 1);
+        get().reorderElements(info.parentId, info.index, info.index - 1);
     },
-
     bringToFront: (id) => {
-        const state = get();
-        const info = findParentOf(state.elements, id);
+        const info = findParentAndIndex(get().elementsById, get().rootIds, id);
         if (!info) return;
-        const siblings = info.parent ? info.parent.children : state.elements;
+        const siblings = info.parentId ? get().elementsById[info.parentId]?.children : get().rootIds;
         if (info.index >= siblings.length - 1) return;
-        get().reorderElements(info.parent?.id ?? null, info.index, siblings.length - 1);
+        get().reorderElements(info.parentId, info.index, siblings.length - 1);
     },
-
     sendToBack: (id) => {
-        const state = get();
-        const info = findParentOf(state.elements, id);
+        const info = findParentAndIndex(get().elementsById, get().rootIds, id);
         if (!info || info.index <= 0) return;
-        get().reorderElements(info.parent?.id ?? null, info.index, 0);
+        get().reorderElements(info.parentId, info.index, 0);
     },
 
-    // ─── Clipboard ───
     copyElement: (id) => {
-        const el = findElementById(get().elements, id) || findElementById(get().globalElements, id);
-        if (el) set({ clipboard: el });
+        const s = get();
+        const el = s.elementsById[id];
+        if (!el) return;
+        const subtree: Record<string, ElementNode> = {};
+        const stack = [id];
+        while (stack.length) {
+            const cur = stack.pop()!;
+            const e = s.elementsById[cur];
+            if (e) { subtree[cur] = e; stack.push(...e.children); }
+        }
+        set({ clipboard: { element: el, subtree } });
     },
 
     cutElement: (id) => {
-        const el = findElementById(get().elements, id) || findElementById(get().globalElements, id);
-        if (el) {
-            set({ clipboard: el });
-            get().deleteElement(id);
-        }
+        get().copyElement(id);
+        get().deleteElement(id);
     },
 
     pasteElement: () => {
         const { clipboard } = get();
         if (!clipboard) return;
-        const clone = deepCloneWithNewIds(clipboard);
-        clone.x += 20;
-        clone.y += 20;
-        set((state) => {
-            const history = pushHistory(state);
+        const { clonedRootId, allCloned } = deepCloneSubtree(clipboard.element, clipboard.subtree, null);
+        allCloned[clonedRootId] = updateLayout(allCloned[clonedRootId], {
+            x: allCloned[clonedRootId].layout.x + 20,
+            y: allCloned[clonedRootId].layout.y + 20,
+        });
+        set(s => {
+            const hist = pushHistory(s);
             return {
-                elements: [...state.elements, clone],
-                selectedElementId: clone.id,
-                ...history,
-                canUndo: true,
-                canRedo: false,
+                elementsById: { ...s.elementsById, ...allCloned },
+                rootIds: [...s.rootIds, clonedRootId],
+                selectedElementId: clonedRootId,
+                ...hist,
             };
         });
     },
 
-    // ─── Pages ───
     addPage: (title) => {
-        const id = uuidv4();
-        const pageCount = get().pages.length;
-        const newPage: Page = {
-            id,
-            title: title || `Page ${pageCount + 1}`,
-            route: `/page-${pageCount + 1}`,
-            elements: [],
-        };
-        set((state) => {
-            // Save current page's elements
-            const updatedPages = state.pages.map((p) =>
-                p.id === state.activePageId ? { ...p, elements: state.elements } : p
-            );
-            return {
-                pages: [...updatedPages, newPage],
-                activePageId: id,
-                elements: [],
-                selectedElementId: null,
-                past: [],
-                future: [],
-                canUndo: false,
-                canRedo: false,
-            };
-        });
+        const state = get();
+        const id = generatePageId();
+        const pageCount = state.pages.length;
+        const newPage: Page = { id, title: title || `Page ${pageCount + 1}`, route: `/page-${pageCount + 1}` };
+        set(s => ({
+            pages: [...s.pages, newPage],
+            pageElementMap: { ...s.pageElementMap, [s.activePageId]: s.rootIds, [id]: [] },
+            activePageId: id,
+            rootIds: [],
+            selectedElementId: null,
+            selectedElementIds: [],
+            past: [], future: [], canUndo: false, canRedo: false,
+        }));
         return id;
     },
 
     deletePage: (id) => {
         const state = get();
-        if (state.pages.length <= 1) return; // Can't delete last page
-        const remaining = state.pages.filter((p) => p.id !== id);
-        const switchTo = id === state.activePageId ? remaining[0] : remaining.find((p) => p.id === state.activePageId) || remaining[0];
+        if (state.pages.length <= 1) return;
+        const remaining = state.pages.filter(p => p.id !== id);
+        const switchTo = id === state.activePageId ? remaining[0] : remaining.find(p => p.id === state.activePageId) || remaining[0];
+        const pageRoots = state.pageElementMap[id] || [];
+        const toDelete = new Set<string>();
+        for (const rid of pageRoots) {
+            for (const did of collectDescendantIds(state.elementsById, rid)) toDelete.add(did);
+        }
+        const next = { ...state.elementsById };
+        for (const did of toDelete) delete next[did];
+        const newMap = { ...state.pageElementMap };
+        delete newMap[id];
         set({
             pages: remaining,
             activePageId: switchTo.id,
-            elements: switchTo.elements,
-            selectedElementId: null,
-            past: [],
-            future: [],
-            canUndo: false,
-            canRedo: false,
+            rootIds: newMap[switchTo.id] || [],
+            elementsById: next,
+            pageElementMap: newMap,
+            selectedElementId: null, selectedElementIds: [],
+            past: [], future: [], canUndo: false, canRedo: false,
         });
     },
 
     renamePage: (id, title) => {
-        set((state) => ({
-            pages: state.pages.map((p) => (p.id === id ? { ...p, title } : p)),
-        }));
+        set(state => ({ pages: state.pages.map(p => p.id === id ? { ...p, title } : p) }));
     },
 
     switchPage: (id) => {
         const state = get();
         if (id === state.activePageId) return;
-        const targetPage = state.pages.find((p) => p.id === id);
-        if (!targetPage) return;
-        // Save current page's elements
-        const updatedPages = state.pages.map((p) =>
-            p.id === state.activePageId ? { ...p, elements: state.elements } : p
-        );
+        if (!state.pages.find(p => p.id === id)) return;
         set({
-            pages: updatedPages,
+            pageElementMap: { ...state.pageElementMap, [state.activePageId]: state.rootIds },
             activePageId: id,
-            elements: targetPage.elements,
-            selectedElementId: null,
-            past: [],
-            future: [],
-            canUndo: false,
-            canRedo: false,
+            rootIds: state.pageElementMap[id] || [],
+            selectedElementId: null, selectedElementIds: [],
+            past: [], future: [], canUndo: false, canRedo: false,
         });
     },
 
-    // ─── Global Elements ───
     addGlobalElement: (elementData) => {
-        const id = uuidv4();
-        const defaults = DEFAULT_SIZES[elementData.type] || { w: 200, h: 100 };
+        const id = generateElementId(elementData.type);
         const element: ElementNode = {
-            ...elementData,
-            id,
-            x: 0,
-            y: 0,
-            w: elementData.w || defaults.w,
-            h: elementData.h || defaults.h,
-            opacity: elementData.opacity ?? 1,
-            rotation: elementData.rotation ?? 0,
-            visible: elementData.visible ?? true,
-            locked: elementData.locked ?? false,
-            children: elementData.children?.map(deepCloneWithNewIds) || [],
+            type: elementData.type, label: elementData.label,
+            props: elementData.props || { ...(DEFAULT_PROPS[elementData.type] || {}) },
+            styles: elementData.styles || { ...(DEFAULT_STYLES[elementData.type] || {}) },
+            animation: elementData.animation, actions: elementData.actions,
+            id, parentId: null,
+            layout: makeLayout(elementData.type, elementData.layout),
+            children: [],
         };
-        set((state) => ({
-            globalElements: [...state.globalElements, element],
+        set(s => ({
+            elementsById: { ...s.elementsById, [id]: element },
+            globalRootIds: [...s.globalRootIds, id],
             selectedElementId: id,
         }));
         return id;
     },
 
     deleteGlobalElement: (id) => {
-        set((state) => {
-            const globalEl = findElementById(state.globalElements, id);
-            if (!globalEl) return state;
-            const removedIds = collectElementIds(globalEl);
+        set(state => {
+            if (!state.elementsById[id]) return state;
+            const toDelete = collectDescendantIds(state.elementsById, id);
+            const next = { ...state.elementsById };
+            for (const did of toDelete) delete next[did];
             return {
-                globalElements: deleteElementFromTree(state.globalElements, id),
-                selectedElementId: removedIds.includes(state.selectedElementId || "") ? null : state.selectedElementId,
-                selectedElementIds: state.selectedElementIds.filter((sid) => !removedIds.includes(sid)),
+                elementsById: next,
+                globalRootIds: state.globalRootIds.filter(r => !toDelete.has(r)),
+                selectedElementId: toDelete.has(state.selectedElementId || "") ? null : state.selectedElementId,
+                selectedElementIds: state.selectedElementIds.filter(s => !toDelete.has(s)),
             };
         });
     },
 
-    // ─── Templates ───
     loadTemplate: (templateElements) => {
-        set((state) => {
-            const history = pushHistory(state);
-            // Deep-clone each template element with fresh IDs
-            const cloned = templateElements.map((el) => {
-                const withId: ElementNode = {
-                    ...el,
-                    id: uuidv4(),
-                    children: el.children?.map(deepCloneWithNewIds) || [],
-                };
-                return withId;
-            });
-            return {
-                elements: cloned,
-                selectedElementId: null,
-                ...history,
-                canUndo: true,
-                canRedo: false,
-            };
+        set(state => {
+            const hist = pushHistory(state);
+            const { byId, rootIds } = buildTemplateElements(templateElements, null);
+            return { elementsById: { ...state.elementsById, ...byId }, rootIds, selectedElementId: null, ...hist };
         });
     },
 
-    // ─── Canvas Settings ───
     updateCanvasSettings: (settings) => {
-        set((state) => ({
-            canvasSettings: { ...state.canvasSettings, ...settings },
-        }));
+        set(state => ({ canvasSettings: { ...state.canvasSettings, ...settings } }));
     },
-
     setFrontendGeneratedCode: (code) => set({ frontendGeneratedCode: code }),
     setFrontendCodePreviewOpen: (open) => set({ frontendCodePreviewOpen: open }),
 }));

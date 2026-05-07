@@ -59,7 +59,7 @@ const KeyboardShortcuts: React.FC = () => {
             if ((e.key === "Delete" || e.key === "Backspace") && selectedElementId) {
                 e.preventDefault();
                 const el = getElement(selectedElementId);
-                if (el && !el.locked) {
+                if (el && !el.layout.locked) {
                     deleteElement(selectedElementId);
                 }
                 return;
@@ -76,11 +76,11 @@ const KeyboardShortcuts: React.FC = () => {
             if (selectedElementId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
                 e.preventDefault();
                 const el = getElement(selectedElementId);
-                if (!el || el.locked) return;
+                if (!el || el.layout.locked) return;
                 const step = e.shiftKey ? 10 : 1;
                 const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
                 const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-                updateElementPosition(selectedElementId, Math.max(0, el.x + dx), Math.max(0, el.y + dy));
+                updateElementPosition(selectedElementId, Math.max(0, el.layout.x + dx), Math.max(0, el.layout.y + dy));
             }
         };
 

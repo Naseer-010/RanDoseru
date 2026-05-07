@@ -111,12 +111,12 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, elementId, onClose }) =
             <div className="ctx-divider" />
 
             <button className="ctx-item" onClick={() => action(() => toggleVisibility(elementId))}>
-                <span className="ctx-icon">{el.visible ? "👁" : "👁‍🗨"}</span>
-                <span>{el.visible ? "Hide" : "Show"}</span>
+                <span className="ctx-icon">{el.layout.visible ? "👁" : "👁‍🗨"}</span>
+                <span>{el.layout.visible ? "Hide" : "Show"}</span>
             </button>
             <button className="ctx-item" onClick={() => action(() => toggleLock(elementId))}>
-                <span className="ctx-icon">{el.locked ? "🔓" : "🔒"}</span>
-                <span>{el.locked ? "Unlock" : "Lock"}</span>
+                <span className="ctx-icon">{el.layout.locked ? "🔓" : "🔒"}</span>
+                <span>{el.layout.locked ? "Unlock" : "Lock"}</span>
             </button>
 
             <div className="ctx-divider" />

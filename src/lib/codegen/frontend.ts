@@ -112,7 +112,8 @@ const renderElement = (
     isRoot: boolean,
     cssOut: Set<string>,
     mode: "html" | "jsx",
-    flowMap: Map<string, Flow> = new Map()
+    flowMap: Map<string, Flow> = new Map(),
+    elementsById: Record<string, ElementNode> = {}
 ): string => {
     const className = classNameFor(el);
     const tag = (() => {
@@ -139,16 +140,16 @@ const renderElement = (
 
     if (isRoot) {
         baseStyles.position = "absolute";
-        baseStyles.left = `${el.x}px`;
-        baseStyles.top = `${el.y}px`;
-        baseStyles.width = `min(100%, ${el.w}px)`;
-        baseStyles.minHeight = `${el.h}px`;
+        baseStyles.left = `${el.layout.x}px`;
+        baseStyles.top = `${el.layout.y}px`;
+        baseStyles.width = `min(100%, ${el.layout.w}px)`;
+        baseStyles.minHeight = `${el.layout.h}px`;
     } else if (el.styles?.position === "absolute") {
         baseStyles.position = "absolute";
-        baseStyles.left = `${el.x}px`;
-        baseStyles.top = `${el.y}px`;
-        baseStyles.width = `min(100%, ${el.w}px)`;
-        baseStyles.minHeight = `${el.h}px`;
+        baseStyles.left = `${el.layout.x}px`;
+        baseStyles.top = `${el.layout.y}px`;
+        baseStyles.width = `min(100%, ${el.layout.w}px)`;
+        baseStyles.minHeight = `${el.layout.h}px`;
     }
 
     if (el.type === "stack") {
@@ -196,7 +197,10 @@ const renderElement = (
     const css = cssFromStyles(mergedStyles);
     cssOut.add(`.${className} { ${css} }`);
 
-    const children = (el.children || []).map((c) => renderElement(c, false, cssOut, mode, flowMap)).join("");
+    const children = (el.children || []).map((childId) => {
+        const child = elementsById[childId];
+        return child ? renderElement(child, false, cssOut, mode, flowMap, elementsById) : "";
+    }).join("");
     const clsAttr = mode === "jsx" ? "className" : "class";
 
     switch (el.type) {
@@ -326,34 +330,28 @@ export function generateFrontendProject(
 
     const safeGlobal = Array.isArray(globalElements) ? globalElements : [];
 
-    // Collect elements from ALL pages if available, otherwise use the active elements
+    // In the flat-map model, all elements are passed in the `elements` array
+    // Page-specific elements are managed by the caller
     let allElements: ElementNode[] = [];
-    if (allPages && allPages.length > 0) {
-        for (const p of allPages) {
-            if (Array.isArray(p.elements)) {
-                allElements.push(...p.elements);
-            }
-        }
-    }
-    // Also include the current active elements (they may not be saved to the page yet)
     const safeElements = Array.isArray(elements) ? elements : [];
-    if (safeElements.length > 0) {
-        // Deduplicate: remove any page elements that share IDs with active elements
-        const activeIds = new Set(safeElements.map(el => el.id));
-        allElements = allElements.filter(el => !activeIds.has(el.id));
-        allElements.push(...safeElements);
-    }
+    allElements = [...safeElements];
 
     const htmlParts: string[] = [];
     const jsxParts: string[] = [];
 
+    // Build elementsById lookup for codegen rendering
+    const codegenElementsById: Record<string, ElementNode> = {};
+    const addToLookup = (els: ElementNode[]) => { for (const e of els) codegenElementsById[e.id] = e; };
+    addToLookup(safeGlobal);
+    addToLookup(allElements);
+
     safeGlobal.forEach((el) => {
-        htmlParts.push(renderElement(el, false, cssParts, "html"));
-        jsxParts.push(renderElement(el, false, cssParts, "jsx", flowMap));
+        htmlParts.push(renderElement(el, false, cssParts, "html", flowMap, codegenElementsById));
+        jsxParts.push(renderElement(el, false, cssParts, "jsx", flowMap, codegenElementsById));
     });
     allElements.forEach((el) => {
-        htmlParts.push(renderElement(el, true, cssParts, "html"));
-        jsxParts.push(renderElement(el, true, cssParts, "jsx", flowMap));
+        htmlParts.push(renderElement(el, true, cssParts, "html", flowMap, codegenElementsById));
+        jsxParts.push(renderElement(el, true, cssParts, "jsx", flowMap, codegenElementsById));
     });
 
     const canvasWidth = Math.max(320, Number(canvasSettings.width) || 1280);
